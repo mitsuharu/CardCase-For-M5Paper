@@ -14,13 +14,64 @@
 // M5PaperMono のフロントライトの明るさ（電池のため控えめにする）
 #define FRONTLIGHT_BRIGHTNESS 64
 
+// SD のマウントを何回まで試すか
+#define SD_MOUNT_RETRY_COUNT 3
+#define SD_MOUNT_RETRY_INTERVAL_MS 200
+
 DeviceProfile profile;
 Menu menu;
+
+/**
+ * SD をアンマウントしてからディープスリープに入る。
+ *
+ * ディープスリープ中も SD カードには通電したままなので、読み出しの途中で寝ると
+ * カードが中途半端な状態で残り、復帰後の SD.begin() が失敗する。
+ * M5PaperS3 は M5GFX 側が SD を SPI モードに入れ直してくれない機種なので、
+ * アプリ側で後始末する必要がある。
+ */
+void enterDeepSleep()
+{
+  SD.end();
+  SPI.end();
+
+  // 電池のためスリープに入る。再び画像選択したい場合は電源ボタンを押す。
+  M5.Log(esp_log_level_t::ESP_LOG_INFO, "Deep sleep start\n");
+  M5.Power.deepSleep();
+}
 
 /// 一覧で選ばれたときに全画面表示してスリープに入る
 void onSelectImage(const MenuItem &item)
 {
-  M5Helper::drawImageFromSD(item.value, profile, true);
+  M5Helper::drawImageFromSD(item.value, profile);
+  enterDeepSleep();
+}
+
+/// SD をマウントする。復帰直後は失敗することがあるのでやり直す。
+bool mountSD()
+{
+  auto mosi = M5.getPin(m5::pin_name_t::sd_spi_mosi);
+  auto miso = M5.getPin(m5::pin_name_t::sd_spi_miso);
+  auto sclk = M5.getPin(m5::pin_name_t::sd_spi_sclk);
+  auto cs = M5.getPin(m5::pin_name_t::sd_spi_cs);
+
+  for (int i = 0; i < SD_MOUNT_RETRY_COUNT; i++)
+  {
+    if (i > 0)
+    {
+      // 一度落としてから初期化し直す
+      SD.end();
+      SPI.end();
+      delay(SD_MOUNT_RETRY_INTERVAL_MS);
+      M5.Log(esp_log_level_t::ESP_LOG_INFO, "retry to mount SD card (%d)\n", i);
+    }
+
+    SPI.begin(sclk, miso, mosi);
+    if (SD.begin(cs, SPI, 4000000))
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 /// 致命的なエラーを表示して停止する
@@ -74,15 +125,8 @@ void setup()
     halt("unsupported board.");
   }
 
-  // Get SPI pins
-  auto mosi = M5.getPin(m5::pin_name_t::sd_spi_mosi);
-  auto miso = M5.getPin(m5::pin_name_t::sd_spi_miso);
-  auto sclk = M5.getPin(m5::pin_name_t::sd_spi_sclk);
-  auto cs = M5.getPin(m5::pin_name_t::sd_spi_cs);
-
   // SD の初期化
-  SPI.begin(sclk, miso, mosi);
-  if (!SD.begin(cs, SPI, 4000000))
+  if (!mountSD())
   {
     halt("mount SD card .. NG");
   }
