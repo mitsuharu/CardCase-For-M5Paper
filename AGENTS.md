@@ -132,6 +132,8 @@ PLATFORMIO_BUILD_FLAGS="-DARDUINO_USB_CDC_ON_BOOT=1 -DCORE_DEBUG_LEVEL=5" \
 - **タグ**を打つと走る。タグ名はバージョンそのもの（例: `1.2.3`）
 - Actions の画面から**手動実行**もできる（バージョンを入力する）
 
+リリースノートは `--generate-notes` で、前回のリリース以降にマージされた PR が自動で列挙される。書き込み方法の説明はその上に置かれる。
+
 成果物は機種ごとに 2 つ。
 
 - `<機種>-merged.bin` … ブートローダ・パーティション・boot_app0・アプリを 1 つにまとめたもの。`write_flash 0x0` だけで書き込める
