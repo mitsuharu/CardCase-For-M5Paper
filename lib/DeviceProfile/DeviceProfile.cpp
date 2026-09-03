@@ -58,9 +58,6 @@ DeviceProfile profileFor(DeviceKind kind)
         p.buttonA = ButtonRole::Next;
         p.buttonB = ButtonRole::Select;
         p.palette = DevicePalette::Gray4;
-        // 4 階調しか出ないので、反転を繰り返す波形に見合う画質差が出ない。
-        // 点滅を抑えるほうを取る。
-        p.imageRefresh = RefreshMode::Fast;
         p.hasFrontlight = true;
         p.hasNfc = true;
         p.menuTextSize = 6;

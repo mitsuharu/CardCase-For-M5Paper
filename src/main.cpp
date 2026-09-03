@@ -14,8 +14,21 @@
 // M5PaperMono のフロントライトの明るさ（電池のため控えめにする）
 #define FRONTLIGHT_BRIGHTNESS 64
 
+// 画像を表示したあと、ボタンやタッチで一覧に戻れる時間。
+// これを過ぎたら電池のためスリープに入る。
+#define VIEWING_TIMEOUT_MS 60000
+
+/// いま画面に出しているもの
+enum class Mode
+{
+  Browsing, // 一覧
+  Viewing,  // 画像
+};
+
 DeviceProfile profile;
 Menu menu;
+Mode mode = Mode::Browsing;
+unsigned long viewingUntil = 0;
 
 /// SD を後始末してからディープスリープに入る
 void enterDeepSleep()
@@ -27,11 +40,17 @@ void enterDeepSleep()
   M5.Power.deepSleep();
 }
 
-/// 一覧で選ばれたときに全画面表示してスリープに入る
+/// 一覧で選ばれたときに全画面表示する
 void onSelectImage(const MenuItem &item)
 {
   M5Helper::drawImageFromSD(item.value, profile);
-  enterDeepSleep();
+
+  // すぐにはスリープに入らない。
+  // 電源ボタンで復帰すると M5.begin() がパネルを初期化し直すため、
+  // 電子ペーパーが大きく点滅する。しばらく起きたまま待って、
+  // ボタンやタッチで一覧に戻れるようにしておくとその点滅を避けられる。
+  mode = Mode::Viewing;
+  viewingUntil = millis() + VIEWING_TIMEOUT_MS;
 }
 
 /// 画面幅に合わせた見出しを描く
@@ -62,6 +81,38 @@ void halt(const String &message)
   {
     delay(1000);
   }
+}
+
+/// 画像を表示している状態から一覧へ戻る
+void returnToMenu()
+{
+  M5.Display.startWrite();
+
+  // 画像は EXIF や画面合わせで回してあるので、一覧の向きに戻す
+  M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
+  if (M5.Display.isEPD())
+  {
+    // 一覧に戻るだけなので、画質より速さと点滅の少なさを優先する
+    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+  }
+
+  M5.Display.fillScreen(TFT_WHITE);
+  drawHeader();
+  menu.render();
+
+  M5.Display.endWrite();
+
+  mode = Mode::Browsing;
+}
+
+/// 画像を見ている間に入力があったか
+bool wasAnyInputPressed()
+{
+  if (M5.BtnA.wasPressed() || M5.BtnB.wasPressed() || M5.BtnC.wasPressed())
+  {
+    return true;
+  }
+  return profile.hasTouch && M5.Touch.getDetail().wasPressed();
 }
 
 /// SD を走査して画像ファイルを一覧に積む
@@ -159,6 +210,22 @@ void setup()
 void loop()
 {
   M5.update();
+
+  if (mode == Mode::Viewing)
+  {
+    if (wasAnyInputPressed())
+    {
+      returnToMenu();
+    }
+    else if (static_cast<long>(millis() - viewingUntil) >= 0)
+    {
+      // 電池のためスリープに入る。再び画像を選びたい場合は電源ボタンを押す。
+      enterDeepSleep();
+    }
+    delay(10);
+    return;
+  }
+
   menu.update();
   delay(10);
 }

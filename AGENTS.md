@@ -29,6 +29,8 @@ M5Stack の電子ペーパー製品向けのアプリ。SD カードに保存し
 - **M5PaperColor は 1 画面のリフレッシュに 15〜30 秒かかる**。描画後にスリープや電源断を行う場合は `M5.Display.waitDisplay()` で完了を待つ。
 - **電子ペーパーは `endWrite()` のたびに画面を更新する**。M5GFX は `Panel_FrameBufferBase::init()` で `_auto_display` を有効にするため、`println()` や `fillRect()` の 1 回ごとに更新が走る。複数の描画は必ず `startWrite()` / `endWrite()` で囲んで 1 回にまとめること。とくに M5PaperColor のパネル（ED2208）は部分更新を持たず毎回全面を転送するので、行単位の描き直しでは速くならない。更新の「回数」を減らすことだけが効く
 - **`startWrite()` を SD アクセスをまたいで保持しない**。バスを共有する機種で競合しうる。進捗表示より、処理を終えてから 1 回で描くことを優先する
+- **画像の表示は `epd_quality` を使う**。M5PaperMono で点滅を減らそうと `epd_fast` / `epd_text` を試したが、`epd_fast` は前の画面が残り、`epd_text` は `epd_quality` と体感が変わらなかった。点滅と残像は表裏なので、画質を取る
+- **スリープからの復帰は電子ペーパーが大きく点滅する**。`M5.begin()` が `Panel_SSD1677_4Gray::init()` などでコントローラをリセットし、パネルの状態を既知にするために更新をかけるため、アプリ側からは減らせない。画像を表示したあとすぐスリープせず、しばらく起きたままボタンで一覧に戻れるようにしてあるのはこのため（`VIEWING_TIMEOUT_MS`）
 - **M5PaperS3 は筐体上部にフックがある**。掛けると上下が逆になるため、画像だけ 180 度回転させて表示する。他機種は回転させない。
 - **M5PaperColor / M5PaperMono は OPI-PSRAM が必須**。`board_build.arduino.memory_type = qio_opi` が無いと M5GFX がディスプレイを初期化せず、画面が出ない。
 - **M5Paper v1.1 だけ ESP32**（他は ESP32-S3）。S3 前提のコードを書かない。

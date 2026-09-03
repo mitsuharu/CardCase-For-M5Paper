@@ -92,16 +92,6 @@ void test_palette_and_optional_features()
     TEST_ASSERT_FALSE(profileFor(DeviceKind::M5Paper).hasFrontlight);
 }
 
-void test_paper_mono_avoids_the_flashing_refresh()
-{
-    // 4 階調しか出ない機種では、反転を繰り返す波形に見合う画質差が出ない
-    TEST_ASSERT_TRUE(profileFor(DeviceKind::PaperMono).imageRefresh == RefreshMode::Fast);
-
-    // 16 階調の機種は画質を優先する
-    TEST_ASSERT_TRUE(profileFor(DeviceKind::M5Paper).imageRefresh == RefreshMode::Quality);
-    TEST_ASSERT_TRUE(profileFor(DeviceKind::PaperS3).imageRefresh == RefreshMode::Quality);
-}
-
 void test_only_paper_color_has_slow_refresh()
 {
     // M5PaperColor は部分更新が無く、1 回の更新に十数秒かかる
@@ -130,7 +120,6 @@ int runUnityTests(void)
     RUN_TEST(test_paper_s3_has_touch_but_no_buttons);
     RUN_TEST(test_display_sizes);
     RUN_TEST(test_palette_and_optional_features);
-    RUN_TEST(test_paper_mono_avoids_the_flashing_refresh);
     RUN_TEST(test_only_paper_color_has_slow_refresh);
     RUN_TEST(test_unknown_device_is_not_operable);
     return UNITY_END();
