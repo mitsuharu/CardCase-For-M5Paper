@@ -4,6 +4,7 @@
 
 #include <SD.h>
 #include <M5Unified.h>
+#include <ExifOrientation.h>
 
 namespace
 {
@@ -25,15 +26,59 @@ namespace
         lowered.toLowerCase();
         return lowered.endsWith(suffix);
     }
+
+    /**
+     * JPEG の先頭を読んで EXIF の Orientation を得る。
+     * IFD0 はファイルの先頭付近にあるので、全体を読まずに頭だけで足りる。
+     */
+    int readExifOrientation(const String &path)
+    {
+        const size_t kHeaderSize = 8 * 1024;
+
+        File file = SD.open(path.c_str(), FILE_READ);
+        if (!file)
+        {
+            return ImageFile::kDefaultOrientation;
+        }
+
+        size_t size = file.size();
+        if (size > kHeaderSize)
+        {
+            size = kHeaderSize;
+        }
+
+        uint8_t *buffer = static_cast<uint8_t *>(malloc(size));
+        if (buffer == nullptr)
+        {
+            file.close();
+            return ImageFile::kDefaultOrientation;
+        }
+
+        size_t read = file.read(buffer, size);
+        file.close();
+
+        int orientation = ImageFile::exifOrientation(buffer, read);
+        free(buffer);
+
+        return orientation;
+    }
 }
 
 // SDカード内の画像ファイルを描画する関数
 void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
 {
+    bool isJpeg = endsWithIgnoreCase(path, ".jpg") || endsWithIgnoreCase(path, ".jpeg");
+
+    // スマホで撮った写真は縦向きでもピクセルは横長のまま保存され、
+    // 向きは EXIF にしか入っていない。drawJpgFile はこれを見ないので、
+    // 表示する向きの分だけ画面側を余分に回して辻褄を合わせる。
+    int rotationSteps = isJpeg ? ImageFile::rotationStepsFor(readExifOrientation(path)) : 0;
+    int rotation = (static_cast<int>(profile.imageRotation) + rotationSteps) & 3;
+
     // 回転と描画モードは fillScreen より先に決める。
     // epd_fastest のまま塗り潰すと、LGFX が endWrite の時点で高速波形のまま
     // 画面を更新してしまい、黒が白に戻りきらずメニューの残像が余白に残る。
-    M5.Display.setRotation(static_cast<uint_fast8_t>(profile.imageRotation));
+    M5.Display.setRotation(static_cast<uint_fast8_t>(rotation));
     if (M5.Display.isEPD())
     {
         // 表示する画像そのものなので画質を優先する
@@ -49,7 +94,7 @@ void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
     // 拡大率 0.0f を渡すと画面に収まる倍率が自動で計算される。
     // datum に middle_center を指定して余白を上下左右に均等に振る。
     const float autoFit = 0.0f;
-    if (endsWithIgnoreCase(path, ".jpg") || endsWithIgnoreCase(path, ".jpeg"))
+    if (isJpeg)
     {
         M5.Display.drawJpgFile(SD, path.c_str(), 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
     }
