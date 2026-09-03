@@ -47,6 +47,18 @@ enum class ButtonRole
     Select, // 決定
 };
 
+/**
+ * 画像を出すときの電子ペーパーの更新の仕方。
+ *
+ * 階調を出す波形は白黒の反転を何度も繰り返すため、画面が派手に点滅する。
+ * 階調の幅が狭い機種では、そこまでの手間をかける価値がない。
+ */
+enum class RefreshMode
+{
+    Quality, // 階調を優先する。反転を伴うので点滅が目立つ
+    Fast,    // 点滅を抑える。多少の残像は許容する
+};
+
 /// 画面が表現できる色
 enum class DevicePalette
 {
@@ -82,6 +94,9 @@ struct DeviceProfile
     ButtonRole buttonC = ButtonRole::None;
 
     DevicePalette palette = DevicePalette::Gray16;
+
+    /// 画像を表示するときの更新の仕方
+    RefreshMode imageRefresh = RefreshMode::Quality;
 
     /// フロントライトの有無（M5PaperMono のみ）
     bool hasFrontlight = false;

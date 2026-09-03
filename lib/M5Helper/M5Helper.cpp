@@ -98,8 +98,11 @@ void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
     M5.Display.setRotation(static_cast<uint_fast8_t>(rotation));
     if (M5.Display.isEPD())
     {
-        // 表示する画像そのものなので画質を優先する
-        M5.Display.setEpdMode(epd_mode_t::epd_quality);
+        // 階調を出す波形は白黒の反転を繰り返すので画面が派手に点滅する。
+        // 階調の幅が狭い機種では割に合わないため、機種ごとに選ぶ。
+        M5.Display.setEpdMode(profile.imageRefresh == RefreshMode::Fast
+                                  ? epd_mode_t::epd_fast
+                                  : epd_mode_t::epd_quality);
     }
 
     // 塗り潰しと画像の描画を 1 回の更新にまとめる。
