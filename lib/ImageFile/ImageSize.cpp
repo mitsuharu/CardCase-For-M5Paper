@@ -119,17 +119,4 @@ namespace ImageFile
         }
         return pngSize(data, size, width, height);
     }
-
-    int orientationFitSteps(int imageWidth, int imageHeight, int screenWidth, int screenHeight)
-    {
-        if (imageWidth <= 0 || imageHeight <= 0 || screenWidth <= 0 || screenHeight <= 0)
-        {
-            return 0;
-        }
-
-        bool imageIsLandscape = imageWidth > imageHeight;
-        bool screenIsLandscape = screenWidth > screenHeight;
-
-        return (imageIsLandscape == screenIsLandscape) ? 0 : kFitRotationSteps;
-    }
 }

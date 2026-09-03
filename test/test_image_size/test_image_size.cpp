@@ -107,32 +107,6 @@ void test_returns_false_for_broken_input()
     }
 }
 
-void test_fit_steps_rotates_when_orientation_differs()
-{
-    // 横長の写真を縦長の画面に出すときは反時計回りに 90 度回す
-    TEST_ASSERT_EQUAL_INT(3, ImageFile::orientationFitSteps(4032, 3024, 540, 960));
-
-    // 縦長の写真を縦長の画面に出すときはそのまま
-    TEST_ASSERT_EQUAL_INT(0, ImageFile::orientationFitSteps(3024, 4032, 540, 960));
-
-    // 画面がすでに横向きなら、横長の写真はそのまま
-    TEST_ASSERT_EQUAL_INT(0, ImageFile::orientationFitSteps(4032, 3024, 960, 540));
-    TEST_ASSERT_EQUAL_INT(3, ImageFile::orientationFitSteps(3024, 4032, 960, 540));
-}
-
-void test_fit_steps_keeps_square_and_matching_images()
-{
-    // 画面ぴったりの画像は動かさない
-    TEST_ASSERT_EQUAL_INT(0, ImageFile::orientationFitSteps(540, 960, 540, 960));
-    TEST_ASSERT_EQUAL_INT(0, ImageFile::orientationFitSteps(400, 600, 400, 600));
-
-    // 正方形は縦長の画面に対して回さない
-    TEST_ASSERT_EQUAL_INT(0, ImageFile::orientationFitSteps(1000, 1000, 540, 960));
-
-    // 寸法が取れなかった場合は回さない
-    TEST_ASSERT_EQUAL_INT(0, ImageFile::orientationFitSteps(0, 0, 540, 960));
-}
-
 int runUnityTests(void)
 {
     UNITY_BEGIN();
@@ -140,8 +114,6 @@ int runUnityTests(void)
     RUN_TEST(test_reads_jpeg_size_after_large_exif);
     RUN_TEST(test_reads_png_size);
     RUN_TEST(test_returns_false_for_broken_input);
-    RUN_TEST(test_fit_steps_rotates_when_orientation_differs);
-    RUN_TEST(test_fit_steps_keeps_square_and_matching_images);
     return UNITY_END();
 }
 

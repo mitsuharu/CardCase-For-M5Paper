@@ -42,7 +42,7 @@ M5PaperColor / M5PaperMono は M5GFX 0.2.20 以降でないと `board_t` に定�
 src/main.cpp     起動と画面の組み立てだけ。機種ごとの分岐はここに書かない
 lib/
   DeviceProfile/ 機種差分の集約。新機種対応はまずここから
-  ImageFile/     ファイル名の判定、EXIF と画像寸法の解析
+  ImageFile/     ファイル名の判定、EXIF と画像寸法の解析、表示する向きの決定
   Menu/          一覧の表示と選択。タッチと物理ボタンの両対応
     Selection/   選択位置とページングの計算（純粋ロジック）
   M5Helper/      画像とテキストの描画
