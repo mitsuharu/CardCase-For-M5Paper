@@ -1,0 +1,149 @@
+name: Release
+
+# タグを打つか、Actions の画面から手動で実行する。
+# タグ名はバージョンそのもの（例: 1.2.3）。
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'バージョン（例: 1.2.3）'
+        required: true
+        type: string
+      prerelease:
+        description: 'プレリリースとして公開する'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  # 機種ごとにファームウェアを作る。
+  # 単体の firmware.bin に加えて、書き込み先を意識しなくてよい統合バイナリも作る。
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # M5Paper v1.1 だけ ESP32 で、ブートローダの位置が 0x1000 になる
+          - environment: M5Paper
+            chip: esp32
+            bootloader_offset: '0x1000'
+          - environment: M5PaperS3
+            chip: esp32s3
+            bootloader_offset: '0x0'
+          - environment: M5PaperColor
+            chip: esp32s3
+            bootloader_offset: '0x0'
+          - environment: M5PaperMono
+            chip: esp32s3
+            bootloader_offset: '0x0'
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version-file: '.python-version'
+
+    - name: Install PlatformIO
+      run: pip install platformio
+
+    - name: Build firmware
+      run: pio run -e ${{ matrix.environment }}
+
+    # bootloader / partitions / boot_app0 / firmware を 1 つにまとめる。
+    # これがあれば offset を指定せずに 0x0 へ書き込むだけで済む。
+    - name: Merge firmware
+      run: |
+        BUILD=".pio/build/${{ matrix.environment }}"
+        BOOT_APP0="$HOME/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
+        mkdir -p dist
+        python "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" \
+          --chip ${{ matrix.chip }} merge_bin \
+          -o "dist/${{ matrix.environment }}-merged.bin" \
+          --flash_mode keep --flash_freq keep --flash_size 16MB \
+          ${{ matrix.bootloader_offset }} "$BUILD/bootloader.bin" \
+          0x8000 "$BUILD/partitions.bin" \
+          0xe000 "$BOOT_APP0" \
+          0x10000 "$BUILD/firmware.bin"
+        cp "$BUILD/firmware.bin" "dist/${{ matrix.environment }}-firmware.bin"
+
+    - name: Upload firmware as artifacts
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: firmware-${{ matrix.environment }}
+        path: dist/*
+        if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Download firmware
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        path: dist
+        merge-multiple: true
+
+    - name: Resolve version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Create release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION: ${{ steps.version.outputs.value }}
+      run: |
+        cat > notes.md <<'EOF'
+        ## 書き込み方法
+
+        `<機種>-merged.bin` はブートローダとパーティションを含んだ統合バイナリです。
+        offset を指定せずにそのまま書き込めます。
+
+        ```bash
+        esptool.py --chip esp32s3 --port /dev/tty.usbmodem1101 write_flash 0x0 M5PaperS3-merged.bin
+        ```
+
+        M5Paper v1.1 は ESP32 なので `--chip esp32` を指定してください。
+
+        `<機種>-firmware.bin` はアプリ部分だけのバイナリで、
+        すでに同じ構成で書き込んだことのある実機を更新する用途に使えます（offset は 0x10000）。
+
+        ## 対応機種
+
+        | 機種 | ファイル |
+        | --- | --- |
+        | M5Paper v1.1 | `M5Paper-merged.bin` |
+        | M5PaperS3 | `M5PaperS3-merged.bin` |
+        | M5PaperColor | `M5PaperColor-merged.bin` |
+        | M5PaperMono | `M5PaperMono-merged.bin` |
+        EOF
+
+        PRERELEASE=""
+        if [ "${{ inputs.prerelease }}" = "true" ]; then
+          PRERELEASE="--prerelease"
+        fi
+
+        gh release create "$VERSION" \
+          --title "$VERSION" \
+          --notes-file notes.md \
+          --target "${{ github.sha }}" \
+          $PRERELEASE \
+          dist/*.bin

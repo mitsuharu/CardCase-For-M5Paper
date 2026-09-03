@@ -121,6 +121,30 @@ PLATFORMIO_BUILD_FLAGS="-DARDUINO_USB_CDC_ON_BOOT=1 -DCORE_DEBUG_LEVEL=5" \
 
 `pio device monitor` は TTY を要求するので、対話端末以外からは使えない。その場合は pyserial で直接読む。
 
+## リリース
+
+`.github/workflows/release.yml` が機種ごとのファームウェアを作り、GitHub Release に添付する。
+
+- **タグ**を打つと走る。タグ名はバージョンそのもの（例: `1.2.3`）
+- Actions の画面から**手動実行**もできる（バージョンを入力する）
+
+成果物は機種ごとに 2 つ。
+
+- `<機種>-merged.bin` … ブートローダ・パーティション・boot_app0・アプリを 1 つにまとめたもの。`write_flash 0x0` だけで書き込める
+- `<機種>-firmware.bin` … アプリ部分のみ（offset は 0x10000）
+
+**M5Paper v1.1 だけブートローダの位置が 0x1000**（他は 0x0）。ESP32 と ESP32-S3 の違いなので、機種を追加するときは `release.yml` の matrix に chip と bootloader_offset を書くこと。
+
+### Actions の指定はコミットハッシュで固定する
+
+`uses:` はタグではなくコミットハッシュで指定し、読めるようにバージョンをコメントで添える。タグは付け替えられるため、供給元が変わると気付けない。
+
+```yaml
+uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+```
+
+更新するときはハッシュとコメントの両方を直す。
+
 ## テスト
 
 - **CI で回すのは native テストのみ**。`Arduino.h` や `M5Unified.h` を必要とするコードは CI でビルドはできてもテストはできない

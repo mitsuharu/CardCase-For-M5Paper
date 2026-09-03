@@ -56,6 +56,19 @@ A fatal error occurred: This chip is ESP32, not ESP32-S3. Wrong --chip argument?
 
 機種と `env` が食い違っています。`-e` を省略すると `M5PaperS3` が対象になるため、M5Paper v1.1 に書き込むときは `-e M5Paper` を明示してください。VS Code から操作する場合は、PlatformIO のサイドバーか下部のステータスバーで `env` を切り替えてから実行します。
 
+## Install
+
+ビルド済みのファームウェアは [Releases](../../releases) から入手できます。PlatformIO を用意しなくても書き込めます。
+
+`<機種>-merged.bin` はブートローダとパーティションを含んだ統合バイナリで、offset を指定せずそのまま書き込めます。
+
+```bash
+pip install esptool
+esptool.py --chip esp32s3 --port /dev/tty.usbmodem1101 write_flash 0x0 M5PaperS3-merged.bin
+```
+
+M5Paper v1.1 は ESP32 なので `--chip esp32` を指定してください。ポート名は環境に合わせて読み替えてください（macOS は `/dev/tty.usb*`、Windows は `COM3` など）。
+
 ## Development
 
 開発ルールは [AGENTS.md](AGENTS.md) にまとめています。
