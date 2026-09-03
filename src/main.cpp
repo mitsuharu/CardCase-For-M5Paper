@@ -262,13 +262,23 @@ void loop()
       // 受け取ったらすぐ表示する。待つ必要はないので電波は止める。
       WebTransfer::end();
 
-      size_t size = 0;
-      const uint8_t *image = WebTransfer::receivedImage(size);
-      M5Helper::drawImageFromMemory(image, size, profile);
-      WebTransfer::releaseReceivedImage();
+      // SD に保存できていればファイルから、無ければメモリから表示する
+      String path = WebTransfer::receivedImagePath();
+      if (path.length() > 0)
+      {
+        WebTransfer::releaseReceivedImage();
+        showImage(path);
+      }
+      else
+      {
+        size_t size = 0;
+        const uint8_t *image = WebTransfer::receivedImage(size);
+        M5Helper::drawImageFromMemory(image, size, profile);
+        WebTransfer::releaseReceivedImage();
 
-      mode = Mode::Viewing;
-      viewingUntil = millis() + VIEWING_TIMEOUT_MS;
+        mode = Mode::Viewing;
+        viewingUntil = millis() + VIEWING_TIMEOUT_MS;
+      }
     }
     else if (wasReturnPressed())
     {

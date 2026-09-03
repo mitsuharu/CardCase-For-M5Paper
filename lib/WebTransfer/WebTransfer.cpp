@@ -19,9 +19,20 @@ namespace
     // 受け取った画像を置く名前。上書きしていくので SD が埋まらない。
     const char *kReceivedPrefix = "/received";
 
-    // 受け取った画像は一度 PSRAM に置く。
-    // SD が無くても表示できるようにするためで、SD があればそのあと保存する。
-    const size_t kMaxImageSize = 4u * 1024u * 1024u;
+    // SD が無いときは画像をメモリに持つ。
+    //
+    // ESP32（M5Paper v1.1）は PSRAM を 4MB しかアドレス空間にマップできず、
+    // そこから画面のフレームバッファと WiFi スタックが取るので大きくは確保できない。
+    // 取れるところまで小さくしながら試す。
+    // SD へ書き込みながら受けるときの上限。メモリを使わないので余裕を持たせる。
+    const size_t kStreamingCapacity = 4u * 1024u * 1024u;
+
+    const size_t kBufferCandidates[] = {
+        2u * 1024u * 1024u,
+        1u * 1024u * 1024u,
+        512u * 1024u,
+        256u * 1024u,
+    };
 
     WebServer *server = nullptr;
     DNSServer *dns = nullptr;
@@ -35,6 +46,10 @@ namespace
     size_t bufferSize = 0;
     size_t receivedSize = 0;
     bool uploadFailed = false;
+
+    // SD があるときは書き込みながら受ける。メモリに溜めなくて済む。
+    File uploadFile;
+    bool usingFile = false;
 
     void releaseBuffer()
     {
@@ -65,36 +80,21 @@ namespace
         return path;
     }
 
-    /// 受け取った画像を SD に残す。SD が無ければ何もしない。
-    void saveToStorage(const String &filename)
+    /// 確保できるだけのバッファを取る
+    bool allocateBuffer()
     {
-        if (!Storage::isAvailable() || buffer == nullptr || receivedSize == 0)
+        releaseBuffer();
+        for (size_t i = 0; i < sizeof(kBufferCandidates) / sizeof(kBufferCandidates[0]); i++)
         {
-            return;
+            buffer = static_cast<uint8_t *>(ps_malloc(kBufferCandidates[i]));
+            if (buffer != nullptr)
+            {
+                bufferSize = kBufferCandidates[i];
+                M5.Log(esp_log_level_t::ESP_LOG_INFO, "upload: buffer %u KB\n", (unsigned)(bufferSize / 1024));
+                return true;
+            }
         }
-
-        String path = pathForUpload(filename);
-        if (Storage::fs().exists(path))
-        {
-            Storage::fs().remove(path);
-        }
-
-        File file = Storage::fs().open(path, FILE_WRITE);
-        if (!file)
-        {
-            M5.Log(esp_log_level_t::ESP_LOG_ERROR, "upload: cannot open %s\n", path.c_str());
-            return;
-        }
-
-        size_t written = file.write(buffer, receivedSize);
-        file.close();
-
-        if (written != receivedSize)
-        {
-            M5.Log(esp_log_level_t::ESP_LOG_ERROR, "upload: write failed\n");
-            return;
-        }
-        receivedPath = path;
+        return false;
     }
 
     void handleUpload()
@@ -107,23 +107,48 @@ namespace
             uploadFailed = false;
             receivedSize = 0;
             releaseBuffer();
-            // 画像 1 枚ぶんなので PSRAM から取る
-            buffer = static_cast<uint8_t *>(ps_malloc(kMaxImageSize));
-            if (buffer == nullptr)
+            receivedPath = "";
+
+            // SD があれば書き込みながら受ける。無ければメモリに溜める。
+            usingFile = Storage::isAvailable();
+            if (usingFile)
+            {
+                String path = pathForUpload(upload.filename);
+                if (Storage::fs().exists(path))
+                {
+                    Storage::fs().remove(path);
+                }
+                uploadFile = Storage::fs().open(path, FILE_WRITE);
+                if (!uploadFile)
+                {
+                    uploadFailed = true;
+                    M5.Log(esp_log_level_t::ESP_LOG_ERROR, "upload: cannot open %s\n", path.c_str());
+                    break;
+                }
+                receivedPath = path;
+            }
+            else if (!allocateBuffer())
             {
                 uploadFailed = true;
                 M5.Log(esp_log_level_t::ESP_LOG_ERROR, "upload: out of memory\n");
-                break;
             }
-            bufferSize = kMaxImageSize;
             break;
 
         case UPLOAD_FILE_WRITE:
-            if (uploadFailed || buffer == nullptr)
+            if (uploadFailed)
             {
                 break;
             }
-            if (receivedSize + upload.currentSize > bufferSize)
+            if (usingFile)
+            {
+                if (!uploadFile || uploadFile.write(upload.buf, upload.currentSize) != upload.currentSize)
+                {
+                    uploadFailed = true;
+                    M5.Log(esp_log_level_t::ESP_LOG_ERROR, "upload: write failed\n");
+                }
+                break;
+            }
+            if (buffer == nullptr || receivedSize + upload.currentSize > bufferSize)
             {
                 uploadFailed = true;
                 M5.Log(esp_log_level_t::ESP_LOG_ERROR, "upload: too large\n");
@@ -134,19 +159,26 @@ namespace
             break;
 
         case UPLOAD_FILE_END:
-            if (uploadFailed || receivedSize == 0)
+            if (uploadFile)
+            {
+                uploadFile.close();
+            }
+            if (uploadFailed || upload.totalSize == 0)
             {
                 releaseBuffer();
                 uploadFailed = true;
                 break;
             }
-            receivedPath = "";
-            saveToStorage(upload.filename);
             received = true;
-            M5.Log(esp_log_level_t::ESP_LOG_INFO, "upload: received %u bytes\n", (unsigned)receivedSize);
+            M5.Log(esp_log_level_t::ESP_LOG_INFO, "upload: received %u bytes (%s)\n",
+                   (unsigned)upload.totalSize, usingFile ? "sd" : "memory");
             break;
 
         default:
+            if (uploadFile)
+            {
+                uploadFile.close();
+            }
             releaseBuffer();
             uploadFailed = true;
             break;
@@ -184,18 +216,49 @@ button:disabled{background:#9bb4cc}
 <div id="status"></div>
 <script>
 const W = %W%, H = %H%;
+const MAXBYTES = %MAXBYTES%;
 const file = document.getElementById('file');
 const preview = document.getElementById('preview');
 const send = document.getElementById('send');
 const status = document.getElementById('status');
 let blob = null;
+let name = 'image.png';
 
 function show(text, cls){ status.textContent = text; status.className = cls || ''; }
+function toBlob(type, q){ return new Promise(r => preview.toBlob(r, type, q)); }
+
+// 指定の倍率で描き直す
+function draw(bitmap, scale) {
+  preview.width = Math.max(1, Math.round(bitmap.width * scale));
+  preview.height = Math.max(1, Math.round(bitmap.height * scale));
+  const ctx = preview.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, preview.width, preview.height);
+  ctx.drawImage(bitmap, 0, 0, preview.width, preview.height);
+}
+
+// 本体が受け取れる大きさに収まるまで、圧縮を強めながら小さくしていく。
+// 図や文字の画像は PNG のまま送りたいので、まず PNG で試す。
+async function encode(bitmap, baseScale) {
+  for (let step = 0; step < 4; step++) {
+    draw(bitmap, baseScale * Math.pow(0.75, step));
+
+    const png = await toBlob('image/png');
+    if (png && png.size <= MAXBYTES) { return { data: png, ext: 'png' }; }
+
+    for (const q of [0.92, 0.8, 0.65, 0.5]) {
+      const jpeg = await toBlob('image/jpeg', q);
+      if (jpeg && jpeg.size <= MAXBYTES) { return { data: jpeg, ext: 'jpg' }; }
+    }
+  }
+  return null;
+}
 
 file.addEventListener('change', async () => {
   const f = file.files[0];
   if (!f) return;
   show('読み込み中...');
+  send.disabled = true;
   try {
     // EXIF の向きをここで反映させる。本体側は回転情報を持たない画像として扱える。
     const bitmap = await createImageBitmap(f, { imageOrientation: 'from-image' });
@@ -206,15 +269,18 @@ file.addEventListener('change', async () => {
     const boxW = sameOrientation ? W : H;
     const boxH = sameOrientation ? H : W;
     const scale = Math.min(1, boxW / bitmap.width, boxH / bitmap.height);
-    preview.width = Math.round(bitmap.width * scale);
-    preview.height = Math.round(bitmap.height * scale);
-    const ctx = preview.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, preview.width, preview.height);
-    ctx.drawImage(bitmap, 0, 0, preview.width, preview.height);
+
+    const encoded = await encode(bitmap, scale);
     bitmap.close();
     preview.style.display = 'block';
-    blob = await new Promise(r => preview.toBlob(r, 'image/png'));
+
+    if (!encoded) {
+      blob = null;
+      show('この画像は大きすぎて送れません', 'ng');
+      return;
+    }
+    blob = encoded.data;
+    name = 'image.' + encoded.ext;
     send.disabled = false;
     show(preview.width + ' x ' + preview.height + ' / ' + Math.round(blob.size / 1024) + ' KB');
   } catch (e) {
@@ -227,7 +293,7 @@ send.addEventListener('click', () => {
   send.disabled = true;
   show('送信中...');
   const body = new FormData();
-  body.append('image', blob, 'image.png');
+  body.append('image', blob, name);
   const xhr = new XMLHttpRequest();
   xhr.open('POST', '/upload');
   xhr.upload.onprogress = e => {
@@ -246,9 +312,15 @@ send.addEventListener('click', () => {
     {
         // 画面より大きい画像を受け取っても表示には使えないので、
         // 送る前にブラウザ側で縮めてもらう。SD の消費も減る。
+        //
+        // あわせて受け入れられるバイト数も伝える。SD へ書き込みながら受ける場合は
+        // 余裕があるが、メモリに溜める場合は確保できた分しか受け取れない。
+        size_t capacity = Storage::isAvailable() ? kStreamingCapacity : bufferSize;
+
         String html = String(FPSTR(kPage));
         html.replace("%W%", String(profile.width));
         html.replace("%H%", String(profile.height));
+        html.replace("%MAXBYTES%", String((uint32_t)capacity));
         server->send(200, "text/html; charset=utf-8", html);
     }
 
@@ -274,6 +346,16 @@ namespace WebTransfer
     {
         received = false;
         receivedPath = "";
+        releaseBuffer();
+
+        // SD があれば書き込みながら受けられるので、メモリは要らない。
+        // 無い場合はここで確保しておく。受け取っている途中で失敗させないためと、
+        // 実際に確保できた量をブラウザに伝えて、その中に収めてもらうため。
+        if (!Storage::isAvailable() && !allocateBuffer())
+        {
+            M5.Log(esp_log_level_t::ESP_LOG_ERROR, "no memory for receiving\n");
+            return false;
+        }
 
         uint8_t mac[6] = {0};
         WiFi.macAddress(mac);
