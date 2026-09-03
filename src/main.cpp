@@ -45,10 +45,16 @@ void onSelectImage(const MenuItem &item)
 {
   M5Helper::drawImageFromSD(item.value, profile);
 
-  // すぐにはスリープに入らない。
   // 電源ボタンで復帰すると M5.begin() がパネルを初期化し直すため、
-  // 電子ペーパーが大きく点滅する。しばらく起きたまま待って、
-  // ボタンやタッチで一覧に戻れるようにしておくとその点滅を避けられる。
+  // 電子ペーパーが大きく点滅する。ボタンのある機種では、すぐ寝ずに
+  // しばらく起きたままにして、ボタンで一覧に戻れるようにするとそれを避けられる。
+  if (!profile.hasButtons())
+  {
+    // 戻る手段が無いなら起きている意味がない
+    enterDeepSleep();
+    return;
+  }
+
   mode = Mode::Viewing;
   viewingUntil = millis() + VIEWING_TIMEOUT_MS;
 }
@@ -105,14 +111,17 @@ void returnToMenu()
   mode = Mode::Browsing;
 }
 
-/// 画像を見ている間に入力があったか
-bool wasAnyInputPressed()
+/**
+ * 画像を見ている間に、一覧へ戻る操作があったか。
+ *
+ * 物理ボタンだけを見る。相手に画面を見せている最中の誤タップで
+ * 画像が消えてしまわないよう、タッチでは戻さない。
+ * ボタンを持たない機種（M5PaperS3）では戻れないので、
+ * 従来どおりスリープしてから電源ボタンで復帰する。
+ */
+bool wasReturnPressed()
 {
-  if (M5.BtnA.wasPressed() || M5.BtnB.wasPressed() || M5.BtnC.wasPressed())
-  {
-    return true;
-  }
-  return profile.hasTouch && M5.Touch.getDetail().wasPressed();
+  return M5.BtnA.wasPressed() || M5.BtnB.wasPressed() || M5.BtnC.wasPressed();
 }
 
 /// SD を走査して画像ファイルを一覧に積む
@@ -213,7 +222,7 @@ void loop()
 
   if (mode == Mode::Viewing)
   {
-    if (wasAnyInputPressed())
+    if (wasReturnPressed())
     {
       returnToMenu();
     }
