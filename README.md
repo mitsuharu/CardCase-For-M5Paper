@@ -58,6 +58,14 @@ A fatal error occurred: This chip is ESP32, not ESP32-S3. Wrong --chip argument?
 
 ## Install
 
+### ブラウザから書き込む（かんたん）
+
+パソコンの Chrome か Edge で [インストーラのページ](https://mitsuharu.github.io/CardCase-For-M5PaperS3/) を開き、本体を USB-C で繋いで、お使いの機種のボタンを押すだけです。何もインストールする必要はありません。
+
+Web Serial を使うため、**パソコンの Chrome / Edge 専用**です。iPhone や Android では書き込めません。また機種は自動判別されないので、ボタンは自分で選んでください（M5PaperS3 / M5PaperColor / M5PaperMono はいずれも ESP32-S3 で、ブラウザからは区別がつきません）。
+
+### コマンドで書き込む
+
 ビルド済みのファームウェアは [Releases](../../releases) から入手できます。PlatformIO を用意しなくても書き込めます。
 
 `<機種>-merged.bin` はブートローダとパーティションを含んだ統合バイナリで、offset を指定せずそのまま書き込めます。

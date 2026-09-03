@@ -20,6 +20,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   # 機種ごとにファームウェアを作る。
@@ -147,3 +149,58 @@ jobs:
           --target "${{ github.sha }}" \
           $PRERELEASE \
           dist/*.bin
+
+  # ブラウザから書き込めるページを GitHub Pages に公開する。
+  # docs/ のページと manifest に、今回ビルドした統合バイナリを並べる。
+  pages:
+    runs-on: ubuntu-latest
+    needs: build
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Download firmware
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        path: dist
+        merge-multiple: true
+
+    - name: Resolve version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Assemble site
+      env:
+        VERSION: ${{ steps.version.outputs.value }}
+      run: |
+        mkdir -p _site
+        cp docs/index.html _site/
+        # manifest のバージョンを今回のリリースに差し替える
+        for manifest in docs/manifest-*.json; do
+          sed "s/\"version\": \"0.0.0\"/\"version\": \"$VERSION\"/" "$manifest" > "_site/$(basename "$manifest")"
+        done
+        # ESP Web Tools は manifest からの相対パスで統合バイナリを取りに来る
+        cp dist/*-merged.bin _site/
+        ls -la _site
+
+    - name: Setup Pages
+      uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      with:
+        path: _site
+
+    - name: Deploy to Pages
+      id: deploy
+      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

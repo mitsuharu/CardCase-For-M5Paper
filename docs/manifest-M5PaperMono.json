@@ -1,0 +1,13 @@
+{
+  "name": "CardCase for M5PaperMono",
+  "version": "0.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        { "path": "M5PaperMono-merged.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

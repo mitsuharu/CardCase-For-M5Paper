@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardCase インストーラ</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.8;
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+  h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+  .lead { color: #666; margin-top: 0; }
+  .note {
+    border-left: 4px solid #d0a000;
+    background: rgba(208, 160, 0, 0.08);
+    padding: 0.75rem 1rem;
+    margin: 1.5rem 0;
+    border-radius: 0 4px 4px 0;
+  }
+  .device {
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .device h2 { font-size: 1.1rem; margin: 0 0 0.25rem; }
+  .device p { margin: 0 0 0.75rem; color: #666; font-size: 0.9rem; }
+  esp-web-install-button { --esp-tools-button-color: #1257a0; }
+  .unsupported { color: #b00; }
+  ol { padding-left: 1.4rem; }
+  footer { margin-top: 3rem; font-size: 0.85rem; color: #888; }
+  a { color: #1257a0; }
+</style>
+</head>
+<body>
+
+<h1>CardCase インストーラ</h1>
+<p class="lead">M5Stack の電子ペーパー製品に、ブラウザから直接ファームウェアを書き込みます。</p>
+
+<div class="note">
+  <strong>パソコンの Chrome または Edge で開いてください。</strong>
+  書き込みには Web Serial を使うため、iPhone や Android では動作しません。
+</div>
+
+<h2>手順</h2>
+<ol>
+  <li>本体を USB-C でパソコンに繋ぐ</li>
+  <li>画面が消えている場合は電源ボタンを押して復帰させる</li>
+  <li>下から<strong>お使いの機種</strong>のボタンを押す</li>
+  <li>表示されるダイアログでデバイスを選ぶ</li>
+</ol>
+
+<div class="note">
+  <strong>機種は自動で判別されません。</strong>
+  M5PaperS3 / M5PaperColor / M5PaperMono はいずれも ESP32-S3 で、
+  ブラウザからは区別がつきません。お使いの機種のボタンを選んでください。
+</div>
+
+<div class="device">
+  <h2>M5Paper v1.1</h2>
+  <p>4.7 インチ / 540 × 960 / フックなし / 側面にロータリスイッチ</p>
+  <esp-web-install-button manifest="manifest-M5Paper.json">
+    <span slot="unsupported" class="unsupported">このブラウザでは書き込めません。パソコンの Chrome か Edge で開いてください。</span>
+  </esp-web-install-button>
+</div>
+
+<div class="device">
+  <h2>M5PaperS3</h2>
+  <p>4.7 インチ / 540 × 960 / <strong>上部にフックあり</strong> / ボタンは電源のみ</p>
+  <esp-web-install-button manifest="manifest-M5PaperS3.json">
+    <span slot="unsupported" class="unsupported">このブラウザでは書き込めません。パソコンの Chrome か Edge で開いてください。</span>
+  </esp-web-install-button>
+</div>
+
+<div class="device">
+  <h2>M5PaperColor</h2>
+  <p>4 インチ / 400 × 600 / <strong>カラー表示</strong> / タッチなし・ボタン 3 つ</p>
+  <esp-web-install-button manifest="manifest-M5PaperColor.json">
+    <span slot="unsupported" class="unsupported">このブラウザでは書き込めません。パソコンの Chrome か Edge で開いてください。</span>
+  </esp-web-install-button>
+</div>
+
+<div class="device">
+  <h2>M5PaperMono</h2>
+  <p>3.97 インチ / 480 × 800 / <strong>フロントライトあり</strong> / ボタン 2 つ</p>
+  <esp-web-install-button manifest="manifest-M5PaperMono.json">
+    <span slot="unsupported" class="unsupported">このブラウザでは書き込めません。パソコンの Chrome か Edge で開いてください。</span>
+  </esp-web-install-button>
+</div>
+
+<h2>うまくいかないとき</h2>
+<ul>
+  <li>デバイスが一覧に出ない場合は、本体がスリープしている可能性があります。電源ボタンを押してから開き直してください。</li>
+  <li>M5Paper v1.1 は USB シリアル変換（CH9102）を使うため、ドライバが必要な場合があります。</li>
+  <li>書き込み後に画面が変わらない場合は、SD カードに画像が入っているか確認してください。</li>
+</ul>
+
+<footer>
+  <a href="https://github.com/mitsuharu/CardCase-For-M5PaperS3">GitHub リポジトリ</a>
+</footer>
+
+</body>
+</html>
