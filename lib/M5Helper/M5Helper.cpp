@@ -2,62 +2,175 @@
 
 #ifdef ARDUINO
 
-#include <SD.h>
 #include <M5Unified.h>
+#include <Storage.h>
+#include <ExifOrientation.h>
+#include <ImageSize.h>
+#include <ImageRotation.h>
 
-uint16_t convertColor(M5Helper::Color color)
+namespace
 {
-  if (color == M5Helper::Color::black)
-  {
-    return TFT_BLACK;
-  }
-  else
-  {
-    return TFT_WHITE;
-  }
+    uint16_t convertColor(M5Helper::Color color)
+    {
+        if (color == M5Helper::Color::black)
+        {
+            return TFT_BLACK;
+        }
+        else
+        {
+            return TFT_WHITE;
+        }
+    }
+
+    bool endsWithIgnoreCase(const String &value, const char *suffix)
+    {
+        String lowered = value;
+        lowered.toLowerCase();
+        return lowered.endsWith(suffix);
+    }
+
+    /**
+     * 画像を表示するときの画面の回転を決める。
+     *
+     * EXIF の向きとピクセル寸法を読み、あとの判断は displayRotation に任せる。
+     * ここはファイルを読む部分だけを持つ。
+     */
+    int displayRotationFor(const String &path, const DeviceProfile &profile)
+    {
+        // EXIF にサムネイルが入っていると SOF は数十 KB 先になるので広めに読む
+        const size_t kHeaderSize = 64 * 1024;
+
+        File file = Storage::fs().open(path.c_str(), FILE_READ);
+        if (!file)
+        {
+            return static_cast<int>(profile.imageRotation);
+        }
+
+        size_t size = file.size();
+        if (size > kHeaderSize)
+        {
+            size = kHeaderSize;
+        }
+
+        // 数十 KB になるので PSRAM を優先する
+        uint8_t *buffer = static_cast<uint8_t *>(ps_malloc(size));
+        if (buffer == nullptr)
+        {
+            buffer = static_cast<uint8_t *>(malloc(size));
+        }
+        if (buffer == nullptr)
+        {
+            file.close();
+            return static_cast<int>(profile.imageRotation);
+        }
+
+        size_t read = file.read(buffer, size);
+        file.close();
+
+        int orientation = ImageFile::exifOrientation(buffer, read);
+
+        int imageWidth = 0;
+        int imageHeight = 0;
+        if (!ImageFile::imageSize(buffer, read, &imageWidth, &imageHeight))
+        {
+            imageWidth = 0;
+            imageHeight = 0;
+        }
+        free(buffer);
+
+        int fitSteps = (profile.imageFitRotation == FitRotation::Clockwise)
+                           ? ImageFile::kFitStepsClockwise
+                           : ImageFile::kFitStepsCounterClockwise;
+
+        return ImageFile::displayRotation(orientation, imageWidth, imageHeight,
+                                          static_cast<int>(profile.imageRotation),
+                                          profile.width, profile.height, fitSteps);
+    }
 }
 
 // SDカード内の画像ファイルを描画する関数
-void M5Helper::drawImageFromSD(String path, Rotation rotation, bool shouldSleepAfterDraw)
+void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
 {
-  M5.Lcd.fillScreen(0xFFFFFF);
-  M5.Lcd.setRotation(static_cast<uint_fast8_t>(rotation));
-  M5.Lcd.setEpdMode(epd_mode_t::epd_quality);
+    bool isJpeg = endsWithIgnoreCase(path, ".jpg") || endsWithIgnoreCase(path, ".jpeg");
 
-  if (path.endsWith(".jpg") || path.endsWith(".jpeg"))
-  {
-    M5.Lcd.drawJpgFile(SD, path, 0, 0);
-  }
-  else if (path.endsWith(".png"))
-  {
-    M5.Lcd.drawPngFile(SD, path, 0, 0);
-  }
+    // drawJpgFile は EXIF も画面との向きも見ないので、画面側を回して辻褄を合わせる
+    int rotation = displayRotationFor(path, profile);
 
-  // 引数により画像を描画した後にスリープに入る
-  if (shouldSleepAfterDraw)
-  {
-    // 電池のためスリープに入る。再び画像選択したい場合は電源ボタンを押す。
-    M5.Log(esp_log_level_t::ESP_LOG_INFO, "Deep sleep start\n");
-    M5.Power.deepSleep();
-  }
+    // 回転と描画モードは fillScreen より先に決める。
+    // epd_fastest のまま塗り潰すと、LGFX が endWrite の時点で高速波形のまま
+    // 画面を更新してしまい、黒が白に戻りきらずメニューの残像が余白に残る。
+    M5.Display.setRotation(static_cast<uint_fast8_t>(rotation));
+    if (M5.Display.isEPD())
+    {
+        // 表示する画像そのものなので画質を優先する。
+        // 点滅の少ない波形もあるが、前の画面が残るので使わない。
+        M5.Display.setEpdMode(epd_mode_t::epd_quality);
+    }
+
+    // 塗り潰しと画像の描画を 1 回の更新にまとめる。
+    // 電子ペーパーは更新が遅いので、途中で走らせない。
+    // ファイルを開くのは画面のトランザクションに入る前。
+    //
+    // M5Paper は EPD（IT8951）と SD が SPI を共有しており、startWrite() で
+    // バスを保持したまま SD を操作すると固まる。デコード中の読み出しは
+    // LGFX が need_transaction を見てバスを解放してくれるが、
+    // 自分で呼ぶ open / close はその対象外なので外に出す必要がある。
+    //
+    // ファイルを自分で開いて渡すのは、パスとファイルシステムを渡す API が
+    // 具体的な型（SDFS / SDMMCFS）に対するテンプレートで、
+    // 機種ごとに違うファイルシステムを扱うこちらの作りには合わないため。
+    File file = Storage::fs().open(path.c_str(), FILE_READ);
+
+    M5.Display.startWrite();
+
+    M5.Display.fillScreen(TFT_WHITE);
+
+    // 拡大率 0.0f を渡すと画面に収まる倍率が自動で計算される。
+    // datum に middle_center を指定して余白を上下左右に均等に振る。
+    const float autoFit = 0.0f;
+    if (file)
+    {
+        if (isJpeg)
+        {
+            M5.Display.drawJpg(&file, 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
+        }
+        else if (endsWithIgnoreCase(path, ".png"))
+        {
+            M5.Display.drawPng(&file, 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
+        }
+    }
+
+    M5.Display.endWrite();
+
+    // 閉じるのも SD の操作なのでトランザクションの外で行う
+    if (file)
+    {
+        file.close();
+    }
+
+    // M5PaperColor は 1 画面のリフレッシュに 15〜30 秒かかる。
+    // 待たずにスリープすると描画が途中で切れるため、必ず完了を待つ。
+    M5.Display.waitDisplay();
 }
 
-M5Helper::Size M5Helper::drawText(String text, int x, int y, int textSize, Color fontColor, Color bgColor)
+M5Helper::Size M5Helper::drawText(const String &text, int x, int y, int textSize, Color fontColor, Color bgColor)
 {
-  M5.Lcd.setTextSize(textSize);
-  M5.Lcd.setTextColor(convertColor(fontColor), convertColor(bgColor));
-  M5.Lcd.setCursor(x, y);
-  M5.Lcd.setTextWrap(false);
-  M5.Lcd.setEpdMode(epd_mode_t::epd_fastest);
-  M5.Lcd.println(text);
-  // Serial.println(text);
-  M5.Lcd.setTextWrap(true);
+    M5.Display.setTextSize(textSize);
+    M5.Display.setTextColor(convertColor(fontColor), convertColor(bgColor));
+    M5.Display.setCursor(x, y);
+    M5.Display.setTextWrap(false);
+    if (M5.Display.isEPD())
+    {
+        M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    }
+    M5.Display.println(text.c_str());
+    M5.Display.setTextWrap(true);
 
-  int width = M5.Lcd.width();
-  int height = M5.Lcd.fontHeight();
+    int width = M5.Display.width();
+    int height = M5.Display.fontHeight();
 
-  M5Helper::Size size = {width, height};
-  return size;
+    M5Helper::Size size = {width, height};
+    return size;
 }
 
 #endif
