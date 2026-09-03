@@ -31,6 +31,22 @@ enum class DeviceRotation
     Left = 3
 };
 
+/**
+ * 物理ボタンに割り当てる役割。
+ *
+ * 同じ BtnA でも機種によって物理的な位置が違う。
+ * M5Paper v1.1 はロータリスイッチの 上 / 押込 / 下 が A / B / C に並ぶが、
+ * M5PaperColor は上下ボタンが A / B に隣り合い、3 つ目が C になる。
+ * どのボタンが何をするかは機種ごとに決める。
+ */
+enum class ButtonRole
+{
+    None,
+    Prev,   // 選択を 1 つ上へ
+    Next,   // 選択を 1 つ下へ
+    Select, // 決定
+};
+
 /// 画面が表現できる色
 enum class DevicePalette
 {
@@ -60,8 +76,10 @@ struct DeviceProfile
     /// タッチパネルの有無。M5PaperColor だけ非搭載でボタン操作しかできない。
     bool hasTouch = false;
 
-    /// BtnA/B/C として使える物理ボタンの数（電源ボタンは含まない）
-    int buttonCount = 0;
+    /// BtnA / BtnB / BtnC の役割（電源ボタンは含まない）
+    ButtonRole buttonA = ButtonRole::None;
+    ButtonRole buttonB = ButtonRole::None;
+    ButtonRole buttonC = ButtonRole::None;
 
     DevicePalette palette = DevicePalette::Gray16;
 
@@ -83,8 +101,14 @@ struct DeviceProfile
 
     bool isColor() const { return palette == DevicePalette::Color6; }
 
+    /// ボタンで操作できるか
+    bool hasButtons() const
+    {
+        return buttonA != ButtonRole::None || buttonB != ButtonRole::None || buttonC != ButtonRole::None;
+    }
+
     /// タッチもボタンも無い＝操作不能。ビルド設定の取り違えを検出するために使う。
-    bool isOperable() const { return hasTouch || buttonCount > 0; }
+    bool isOperable() const { return hasTouch || hasButtons(); }
 };
 
 /// 機種から固定のプロファイルを引く。副作用のない純粋関数。

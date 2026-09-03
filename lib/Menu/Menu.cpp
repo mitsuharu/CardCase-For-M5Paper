@@ -33,18 +33,55 @@ bool Menu::addItem(const String &title, const String &value)
     return true;
 }
 
-const char *Menu::operationGuide() const
+namespace
 {
+    /// 役割を画面に出す短いラベルにする
+    const char *roleLabel(ButtonRole role)
+    {
+        switch (role)
+        {
+        case ButtonRole::Prev:
+            return "Up";
+        case ButtonRole::Next:
+            return "Down";
+        case ButtonRole::Select:
+            return "OK";
+        default:
+            return nullptr;
+        }
+    }
+
+    void appendRole(String &guide, const char *name, ButtonRole role)
+    {
+        const char *label = roleLabel(role);
+        if (label == nullptr)
+        {
+            return;
+        }
+        if (guide.length() > 0)
+        {
+            guide += "  ";
+        }
+        guide += name;
+        guide += ":";
+        guide += label;
+    }
+}
+
+/// 操作ガイドは役割から組み立てる。機種ごとに割り当てが違うため。
+String Menu::operationGuide() const
+{
+    if (!_profile.hasButtons())
+    {
+        return String("Touch file name!");
+    }
+
     // 画面の幅が狭い機種でも 1 行に収めたいので短く書く
-    if (_profile.buttonCount >= 3)
-    {
-        return "A:Prev  B:OK  C:Next";
-    }
-    if (_profile.buttonCount == 2)
-    {
-        return "A:Next  B:OK";
-    }
-    return "Touch file name!";
+    String guide;
+    appendRole(guide, "A", _profile.buttonA);
+    appendRole(guide, "B", _profile.buttonB);
+    appendRole(guide, "C", _profile.buttonC);
+    return guide;
 }
 
 void Menu::begin(const DeviceProfile &profile, int topY, SelectHandler onSelect)
@@ -55,7 +92,7 @@ void Menu::begin(const DeviceProfile &profile, int topY, SelectHandler onSelect)
 
     // ボタンで動かせる機種では、いまどれを選んでいるかを必ず見せる。
     // タッチと併用できる機種（M5Paper）でもカーソルが無いとボタン操作が成立しない。
-    _useCursor = profile.buttonCount > 0;
+    _useCursor = profile.hasButtons();
 
     M5.Display.setTextSize(profile.menuTextSize);
     _rowHeight = M5.Display.fontHeight();
@@ -66,13 +103,13 @@ void Menu::begin(const DeviceProfile &profile, int topY, SelectHandler onSelect)
 
     // 操作ガイドは折り返すと読みにくいので、幅に収まる最大の文字サイズを選ぶ。
     // 画面の幅が機種ごとに違うため、固定値にはできない。
-    const char *guide = operationGuide();
+    String guide = operationGuide();
     int guideWidth = M5.Display.width() - kPaddingX * 2;
     _footerTextSize = kFooterTextSizeMin;
     for (int size = kFooterTextSizeMax; size >= kFooterTextSizeMin; size--)
     {
         M5.Display.setTextSize(size);
-        if (M5.Display.textWidth(guide) <= guideWidth)
+        if (M5.Display.textWidth(guide.c_str()) <= guideWidth)
         {
             _footerTextSize = size;
             break;
@@ -156,7 +193,7 @@ void Menu::render()
     }
 
     M5.Display.setCursor(kPaddingX, M5.Display.getCursorY());
-    M5.Display.println(operationGuide());
+    M5.Display.println(operationGuide().c_str());
 
     M5.Display.endWrite();
 
@@ -212,38 +249,39 @@ void Menu::update()
     int previousPage = _selection.pageIndex();
     bool moved = false;
 
-    if (_profile.buttonCount >= 3)
+    // どのボタンが何をするかは機種ごとに違うので、プロファイルの役割に従う
+    ButtonRole pressed = ButtonRole::None;
+    if (M5.BtnA.wasPressed())
     {
-        // BtnA:前へ / BtnB:決定 / BtnC:次へ
-        if (M5.BtnA.wasPressed())
-        {
-            _selection.movePrev();
-            moved = true;
-        }
-        else if (M5.BtnC.wasPressed())
-        {
-            _selection.moveNext();
-            moved = true;
-        }
-        else if (M5.BtnB.wasPressed())
-        {
-            confirm();
-            return;
-        }
+        pressed = _profile.buttonA;
     }
-    else if (_profile.buttonCount == 2)
+    else if (M5.BtnB.wasPressed())
     {
-        // ボタンが 2 つしかないので BtnA:次へ / BtnB:決定 に絞る
-        if (M5.BtnA.wasPressed())
-        {
-            _selection.moveNext();
-            moved = true;
-        }
-        else if (M5.BtnB.wasPressed())
-        {
-            confirm();
-            return;
-        }
+        pressed = _profile.buttonB;
+    }
+    else if (M5.BtnC.wasPressed())
+    {
+        pressed = _profile.buttonC;
+    }
+
+    switch (pressed)
+    {
+    case ButtonRole::Prev:
+        _selection.movePrev();
+        moved = true;
+        break;
+
+    case ButtonRole::Next:
+        _selection.moveNext();
+        moved = true;
+        break;
+
+    case ButtonRole::Select:
+        confirm();
+        return;
+
+    default:
+        break;
     }
 
     if (moved)

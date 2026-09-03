@@ -32,6 +32,7 @@ M5Stack の電子ペーパー製品向けのアプリ。SD カードに保存し
 - **M5PaperS3 は筐体上部にフックがある**。掛けると上下が逆になるため、画像だけ 180 度回転させて表示する。他機種は回転させない。
 - **M5PaperColor / M5PaperMono は OPI-PSRAM が必須**。`board_build.arduino.memory_type = qio_opi` が無いと M5GFX がディスプレイを初期化せず、画面が出ない。
 - **M5Paper v1.1 だけ ESP32**（他は ESP32-S3）。S3 前提のコードを書かない。
+- **同じ BtnA でも機種によって物理的な位置が違う**。M5Paper v1.1 はロータリスイッチの 上 / 押込 / 下 が BtnA / BtnB / BtnC に並ぶが、M5PaperColor は上下ボタンが BtnA / BtnB に隣り合い、3 つ目が BtnC になる。割り当ては `DeviceProfile` の `buttonA` / `buttonB` / `buttonC` に役割として持たせ、コード側でボタン名に意味を持たせない
 
 M5PaperColor / M5PaperMono は M5GFX 0.2.20 以降でないと `board_t` に定義が無く、機種として認識されない。ライブラリを下げないこと。
 
@@ -41,7 +42,7 @@ M5PaperColor / M5PaperMono は M5GFX 0.2.20 以降でないと `board_t` に定�
 src/main.cpp     起動と画面の組み立てだけ。機種ごとの分岐はここに書かない
 lib/
   DeviceProfile/ 機種差分の集約。新機種対応はまずここから
-  ImageFile/     ファイル名の判定と EXIF の解析
+  ImageFile/     ファイル名の判定、EXIF と画像寸法の解析
   Menu/          一覧の表示と選択。タッチと物理ボタンの両対応
     Selection/   選択位置とページングの計算（純粋ロジック）
   M5Helper/      画像とテキストの描画

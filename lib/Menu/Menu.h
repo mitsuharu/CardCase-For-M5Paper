@@ -63,7 +63,7 @@ private:
     bool _redrawPending = false;
     unsigned long _redrawAt = 0;
 
-    const char *operationGuide() const;
+    String operationGuide() const;
     void requestRedraw(int previousIndex, int previousPage);
 
     void drawRow(int index);

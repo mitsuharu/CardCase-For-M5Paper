@@ -13,7 +13,10 @@ DeviceProfile profileFor(DeviceKind kind)
         p.height = 960;
         p.imageRotation = DeviceRotation::Up;
         p.hasTouch = true;
-        p.buttonCount = 3; // ロータリスイッチの上/押込/下が BtnA/B/C に割り当たる
+        // ロータリスイッチの 上 / 押込 / 下 がそのまま BtnA / BtnB / BtnC に並ぶ
+        p.buttonA = ButtonRole::Prev;
+        p.buttonB = ButtonRole::Select;
+        p.buttonC = ButtonRole::Next;
         p.palette = DevicePalette::Gray16;
         p.menuTextSize = 8;
         break;
@@ -24,7 +27,7 @@ DeviceProfile profileFor(DeviceKind kind)
         p.height = 960;
         p.imageRotation = DeviceRotation::Down; // 筐体のフックに合わせて上下反転
         p.hasTouch = true;
-        p.buttonCount = 0; // 物理ボタンは電源ボタンのみ
+        // 物理ボタンは電源ボタンのみなので、一覧の操作はタッチに任せる
         p.palette = DevicePalette::Gray16;
         p.menuTextSize = 8;
         break;
@@ -35,7 +38,11 @@ DeviceProfile profileFor(DeviceKind kind)
         p.height = 600;
         p.imageRotation = DeviceRotation::Up;
         p.hasTouch = false; // タッチパネル非搭載。ボタンだけが操作手段になる
-        p.buttonCount = 3;
+        // 上下のボタンが BtnA / BtnB に隣り合い、3 つ目の BtnC が離れている。
+        // 位置どおりに 上 / 下 を並べ、決定は離れた BtnC に置く。
+        p.buttonA = ButtonRole::Prev;
+        p.buttonB = ButtonRole::Next;
+        p.buttonC = ButtonRole::Select;
         p.palette = DevicePalette::Color6;
         p.slowRefresh = true; // 1 画面 15〜30 秒
         p.menuTextSize = 5;
@@ -47,7 +54,9 @@ DeviceProfile profileFor(DeviceKind kind)
         p.height = 800;
         p.imageRotation = DeviceRotation::Up;
         p.hasTouch = true;
-        p.buttonCount = 2;
+        // ボタンが 2 つしかないので、送りと決定に絞る
+        p.buttonA = ButtonRole::Next;
+        p.buttonB = ButtonRole::Select;
         p.palette = DevicePalette::Gray4;
         p.hasFrontlight = true;
         p.hasNfc = true;

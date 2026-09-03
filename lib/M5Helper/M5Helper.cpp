@@ -5,6 +5,7 @@
 #include <SD.h>
 #include <M5Unified.h>
 #include <ExifOrientation.h>
+#include <ImageSize.h>
 
 namespace
 {
@@ -28,17 +29,22 @@ namespace
     }
 
     /**
-     * JPEG の先頭を読んで EXIF の Orientation を得る。
-     * IFD0 はファイルの先頭付近にあるので、全体を読まずに頭だけで足りる。
+     * 画像を表示するときの回転量（時計回りに 90 度を何回）を決める。
+     *
+     * 1 つめは EXIF の向き。スマホの写真は縦向きに撮ってもピクセルは横長のまま
+     * 保存され、向きは EXIF にしか入っていない。
+     * 2 つめは画面との向き合わせ。横長の写真を縦長の画面にそのまま出すと
+     * 細い帯になってしまうので、向きを揃えて画面いっぱいに表示する。
      */
-    int readExifOrientation(const String &path)
+    int rotationStepsFor(const String &path, const DeviceProfile &profile)
     {
-        const size_t kHeaderSize = 8 * 1024;
+        // EXIF にサムネイルが入っていると SOF は数十 KB 先になるので広めに読む
+        const size_t kHeaderSize = 64 * 1024;
 
         File file = SD.open(path.c_str(), FILE_READ);
         if (!file)
         {
-            return ImageFile::kDefaultOrientation;
+            return 0;
         }
 
         size_t size = file.size();
@@ -47,20 +53,52 @@ namespace
             size = kHeaderSize;
         }
 
-        uint8_t *buffer = static_cast<uint8_t *>(malloc(size));
+        // 数十 KB になるので PSRAM を優先する
+        uint8_t *buffer = static_cast<uint8_t *>(ps_malloc(size));
+        if (buffer == nullptr)
+        {
+            buffer = static_cast<uint8_t *>(malloc(size));
+        }
         if (buffer == nullptr)
         {
             file.close();
-            return ImageFile::kDefaultOrientation;
+            return 0;
         }
 
         size_t read = file.read(buffer, size);
         file.close();
 
-        int orientation = ImageFile::exifOrientation(buffer, read);
+        int steps = ImageFile::rotationStepsFor(ImageFile::exifOrientation(buffer, read));
+
+        int imageWidth = 0;
+        int imageHeight = 0;
+        bool hasSize = ImageFile::imageSize(buffer, read, &imageWidth, &imageHeight);
         free(buffer);
 
-        return orientation;
+        if (hasSize)
+        {
+            // EXIF で 90 度単位に回るなら、表示される画像は縦横が入れ替わる
+            if (steps & 1)
+            {
+                int swapped = imageWidth;
+                imageWidth = imageHeight;
+                imageHeight = swapped;
+            }
+
+            // 画面もここまでの回転ぶんだけ縦横が入れ替わる
+            int screenWidth = profile.width;
+            int screenHeight = profile.height;
+            if ((static_cast<int>(profile.imageRotation) + steps) & 1)
+            {
+                int swapped = screenWidth;
+                screenWidth = screenHeight;
+                screenHeight = swapped;
+            }
+
+            steps += ImageFile::orientationFitSteps(imageWidth, imageHeight, screenWidth, screenHeight);
+        }
+
+        return steps & 3;
     }
 }
 
@@ -69,11 +107,9 @@ void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
 {
     bool isJpeg = endsWithIgnoreCase(path, ".jpg") || endsWithIgnoreCase(path, ".jpeg");
 
-    // スマホで撮った写真は縦向きでもピクセルは横長のまま保存され、
-    // 向きは EXIF にしか入っていない。drawJpgFile はこれを見ないので、
-    // 表示する向きの分だけ画面側を余分に回して辻褄を合わせる。
-    int rotationSteps = isJpeg ? ImageFile::rotationStepsFor(readExifOrientation(path)) : 0;
-    int rotation = (static_cast<int>(profile.imageRotation) + rotationSteps) & 3;
+    // drawJpgFile は EXIF も画面との向きも見ないので、
+    // 必要な分だけ画面側を余分に回して辻褄を合わせる。
+    int rotation = (static_cast<int>(profile.imageRotation) + rotationStepsFor(path, profile)) & 3;
 
     // 回転と描画モードは fillScreen より先に決める。
     // epd_fastest のまま塗り潰すと、LGFX が endWrite の時点で高速波形のまま
