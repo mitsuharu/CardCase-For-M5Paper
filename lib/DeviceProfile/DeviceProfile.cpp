@@ -18,6 +18,7 @@ DeviceProfile profileFor(DeviceKind kind)
         p.buttonB = ButtonRole::Select;
         p.buttonC = ButtonRole::Next;
         p.palette = DevicePalette::Gray16;
+        p.needsExtraClear = true; // QR のあとに残像が残る
         p.menuTextSize = 8;
         break;
 

@@ -45,6 +45,36 @@ void enterDeepSleep()
   M5.Power.deepSleep();
 }
 
+/// 画面を 1 色で塗って更新する
+void fillAndDisplay(uint16_t color)
+{
+  M5.Display.startWrite();
+  M5.Display.fillScreen(color);
+  M5.Display.endWrite();
+  M5.Display.waitDisplay();
+}
+
+/**
+ * 画面を消し切ってから戻る。
+ *
+ * QR は細かい白黒の模様なので、白で 1 回塗るだけでは消え切らず、
+ * 次に描くものの下に模様が透ける。一度黒で塗って粒子を反転させてから
+ * 白に戻すと確実に消える。
+ */
+void clearScreen()
+{
+  // 残像が残るのはこの機種だけ。他は画像を描くときの更新で消えるので、
+  // 更新を増やしても待ち時間が延びるだけになる。
+  if (!M5.Display.isEPD() || !profile.needsExtraClear)
+  {
+    return;
+  }
+
+  M5.Display.setEpdMode(epd_mode_t::epd_quality);
+  fillAndDisplay(TFT_BLACK);
+  fillAndDisplay(TFT_WHITE);
+}
+
 /// 画像を全画面表示して、戻れる状態にする
 void showImage(const String &path)
 {
@@ -291,6 +321,9 @@ void loop()
       // 受け取ったらすぐ表示する。待つ必要はないので電波は止める。
       WebTransfer::end();
 
+      // QR の残像が画像に透けないよう、一度消してから描く
+      clearScreen();
+
       // SD に保存できていればファイルから、無ければメモリから表示する
       String path = WebTransfer::receivedImagePath();
       if (path.length() > 0)
@@ -312,6 +345,7 @@ void loop()
     else if (wasReturnPressed())
     {
       WebTransfer::end();
+      clearScreen();
       returnToMenu();
     }
     delay(5);
