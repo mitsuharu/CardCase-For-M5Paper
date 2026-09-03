@@ -109,18 +109,25 @@ void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
 
     // 塗り潰しと画像の描画を 1 回の更新にまとめる。
     // 電子ペーパーは更新が遅いので、途中で走らせない。
+    // ファイルを開くのは画面のトランザクションに入る前。
+    //
+    // M5Paper は EPD（IT8951）と SD が SPI を共有しており、startWrite() で
+    // バスを保持したまま SD を操作すると固まる。デコード中の読み出しは
+    // LGFX が need_transaction を見てバスを解放してくれるが、
+    // 自分で呼ぶ open / close はその対象外なので外に出す必要がある。
+    //
+    // ファイルを自分で開いて渡すのは、パスとファイルシステムを渡す API が
+    // 具体的な型（SDFS / SDMMCFS）に対するテンプレートで、
+    // 機種ごとに違うファイルシステムを扱うこちらの作りには合わないため。
+    File file = Storage::fs().open(path.c_str(), FILE_READ);
+
     M5.Display.startWrite();
 
     M5.Display.fillScreen(TFT_WHITE);
 
     // 拡大率 0.0f を渡すと画面に収まる倍率が自動で計算される。
     // datum に middle_center を指定して余白を上下左右に均等に振る。
-    //
-    // ファイルは自分で開いて渡す。パスとファイルシステムを渡す API は
-    // 具体的な型（SDFS / SDMMCFS）に対するテンプレートなので、
-    // 機種ごとに違うファイルシステムを扱うこちらの作りには合わない。
     const float autoFit = 0.0f;
-    File file = Storage::fs().open(path.c_str(), FILE_READ);
     if (file)
     {
         if (isJpeg)
@@ -131,10 +138,15 @@ void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
         {
             M5.Display.drawPng(&file, 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
         }
-        file.close();
     }
 
     M5.Display.endWrite();
+
+    // 閉じるのも SD の操作なのでトランザクションの外で行う
+    if (file)
+    {
+        file.close();
+    }
 
     // M5PaperColor は 1 画面のリフレッシュに 15〜30 秒かかる。
     // 待たずにスリープすると描画が途中で切れるため、必ず完了を待つ。
