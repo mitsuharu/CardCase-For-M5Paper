@@ -21,12 +21,13 @@ namespace
     const unsigned long kSlowRedrawDelayMs = 1200;
 }
 
-bool Menu::addItem(const String &title, const String &value)
+bool Menu::addItem(MenuItemKind kind, const String &title, const String &value)
 {
     if (_itemCount >= kMaxItems)
     {
         return false;
     }
+    _items[_itemCount].kind = kind;
     _items[_itemCount].title = title;
     _items[_itemCount].value = value;
     _itemCount++;

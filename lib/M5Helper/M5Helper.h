@@ -34,5 +34,13 @@ struct M5Helper
      */
     static void drawImageFromSD(const String &path, const DeviceProfile &profile);
 
+    /**
+     * メモリ上の画像を全画面に描画する。
+     *
+     * WiFi で受け取った画像は SD が無くても表示したいので、
+     * ファイルを介さずに描ける経路を用意している。
+     */
+    static void drawImageFromMemory(const uint8_t *data, size_t size, const DeviceProfile &profile);
+
     static Size drawText(const String &text, int x, int y, int textSize = 6, Color fontColor = Color::black, Color bgColor = Color::white);
 };

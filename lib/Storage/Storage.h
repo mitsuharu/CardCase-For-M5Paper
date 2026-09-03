@@ -28,6 +28,9 @@ namespace Storage
      */
     void end();
 
+    /// マウントできているか。SD が無くても動く処理から使う。
+    bool isAvailable();
+
     /// 画像を読むためのファイルシステム。begin() が成功したあとに使う。
     fs::FS &fs();
 #endif

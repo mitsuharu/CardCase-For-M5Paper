@@ -18,6 +18,7 @@ namespace
     const uint32_t kSpiFrequency = 4000000;
 
     bool usingSdmmc = false;
+    bool mounted = false;
 
     /// M5Unified のピンテーブルから配線を読む
     SdPins readSdPins()
@@ -61,6 +62,8 @@ namespace Storage
     bool begin()
     {
         // つなぎ方は M5Unified のピンテーブルが知っている
+        mounted = false;
+
         SdPins pins = readSdPins();
         if (!pins.isValid())
         {
@@ -80,14 +83,22 @@ namespace Storage
 
             if (usingSdmmc ? beginSdmmc(pins) : beginSpi(pins))
             {
+                mounted = true;
                 return true;
             }
         }
         return false;
     }
 
+    bool isAvailable()
+    {
+        return mounted;
+    }
+
     void end()
     {
+        mounted = false;
+
         if (usingSdmmc)
         {
             SD_MMC.end();

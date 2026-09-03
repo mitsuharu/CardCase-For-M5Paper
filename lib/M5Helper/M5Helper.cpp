@@ -10,6 +10,9 @@
 
 namespace
 {
+    // 拡大率 0.0f を渡すと画面に収まる倍率が自動で計算される
+    const float kAutoFit = 0.0f;
+
     uint16_t convertColor(M5Helper::Color color)
     {
         if (color == M5Helper::Color::black)
@@ -29,10 +32,63 @@ namespace
         return lowered.endsWith(suffix);
     }
 
+    /// 画像の先頭バイト列から、表示するときの画面の回転を決める
+    int displayRotationForHeader(const uint8_t *data, size_t size, const DeviceProfile &profile)
+    {
+        int orientation = ImageFile::exifOrientation(data, size);
+
+        int imageWidth = 0;
+        int imageHeight = 0;
+        if (!ImageFile::imageSize(data, size, &imageWidth, &imageHeight))
+        {
+            imageWidth = 0;
+            imageHeight = 0;
+        }
+
+        int fitSteps = (profile.imageFitRotation == FitRotation::Clockwise)
+                           ? ImageFile::kFitStepsClockwise
+                           : ImageFile::kFitStepsCounterClockwise;
+
+        return ImageFile::displayRotation(orientation, imageWidth, imageHeight,
+                                          static_cast<int>(profile.imageRotation),
+                                          profile.width, profile.height, fitSteps);
+    }
+
+    /// PNG のシグネチャを持つか
+    bool isPng(const uint8_t *data, size_t size)
+    {
+        static const uint8_t kSignature[] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        if (size < sizeof(kSignature))
+        {
+            return false;
+        }
+        for (size_t i = 0; i < sizeof(kSignature); i++)
+        {
+            if (data[i] != kSignature[i])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// 描画前の共通の下ごしらえ。回転と描画モードを決めて画面を白で埋める。
+    void beginImageFrame(int rotation)
+    {
+        M5.Display.setRotation(static_cast<uint_fast8_t>(rotation));
+        if (M5.Display.isEPD())
+        {
+            // 表示する画像そのものなので画質を優先する。
+            // 点滅の少ない波形もあるが、前の画面が残るので使わない。
+            M5.Display.setEpdMode(epd_mode_t::epd_quality);
+        }
+
+        M5.Display.startWrite();
+        M5.Display.fillScreen(TFT_WHITE);
+    }
+
     /**
-     * 画像を表示するときの画面の回転を決める。
-     *
-     * EXIF の向きとピクセル寸法を読み、あとの判断は displayRotation に任せる。
+     * ファイルから、表示するときの画面の回転を決める。
      * ここはファイルを読む部分だけを持つ。
      */
     int displayRotationFor(const String &path, const DeviceProfile &profile)
@@ -67,49 +123,22 @@ namespace
         size_t read = file.read(buffer, size);
         file.close();
 
-        int orientation = ImageFile::exifOrientation(buffer, read);
-
-        int imageWidth = 0;
-        int imageHeight = 0;
-        if (!ImageFile::imageSize(buffer, read, &imageWidth, &imageHeight))
-        {
-            imageWidth = 0;
-            imageHeight = 0;
-        }
+        int rotation = displayRotationForHeader(buffer, read, profile);
         free(buffer);
-
-        int fitSteps = (profile.imageFitRotation == FitRotation::Clockwise)
-                           ? ImageFile::kFitStepsClockwise
-                           : ImageFile::kFitStepsCounterClockwise;
-
-        return ImageFile::displayRotation(orientation, imageWidth, imageHeight,
-                                          static_cast<int>(profile.imageRotation),
-                                          profile.width, profile.height, fitSteps);
+        return rotation;
     }
 }
 
 // SDカード内の画像ファイルを描画する関数
 void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
 {
-    bool isJpeg = endsWithIgnoreCase(path, ".jpg") || endsWithIgnoreCase(path, ".jpeg");
+    bool jpeg = endsWithIgnoreCase(path, ".jpg") || endsWithIgnoreCase(path, ".jpeg");
 
-    // drawJpgFile は EXIF も画面との向きも見ないので、画面側を回して辻褄を合わせる
+    // drawJpg は EXIF も画面との向きも見ないので、画面側を回して辻褄を合わせる。
+    // 回転の判断でも SD を読むため、画面のトランザクションより先に済ませる。
     int rotation = displayRotationFor(path, profile);
 
-    // 回転と描画モードは fillScreen より先に決める。
-    // epd_fastest のまま塗り潰すと、LGFX が endWrite の時点で高速波形のまま
-    // 画面を更新してしまい、黒が白に戻りきらずメニューの残像が余白に残る。
-    M5.Display.setRotation(static_cast<uint_fast8_t>(rotation));
-    if (M5.Display.isEPD())
-    {
-        // 表示する画像そのものなので画質を優先する。
-        // 点滅の少ない波形もあるが、前の画面が残るので使わない。
-        M5.Display.setEpdMode(epd_mode_t::epd_quality);
-    }
-
-    // 塗り潰しと画像の描画を 1 回の更新にまとめる。
-    // 電子ペーパーは更新が遅いので、途中で走らせない。
-    // ファイルを開くのは画面のトランザクションに入る前。
+    // ファイルを開くのも画面のトランザクションに入る前。
     //
     // M5Paper は EPD（IT8951）と SD が SPI を共有しており、startWrite() で
     // バスを保持したまま SD を操作すると固まる。デコード中の読み出しは
@@ -121,22 +150,17 @@ void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
     // 機種ごとに違うファイルシステムを扱うこちらの作りには合わないため。
     File file = Storage::fs().open(path.c_str(), FILE_READ);
 
-    M5.Display.startWrite();
+    beginImageFrame(rotation);
 
-    M5.Display.fillScreen(TFT_WHITE);
-
-    // 拡大率 0.0f を渡すと画面に収まる倍率が自動で計算される。
-    // datum に middle_center を指定して余白を上下左右に均等に振る。
-    const float autoFit = 0.0f;
     if (file)
     {
-        if (isJpeg)
+        if (jpeg)
         {
-            M5.Display.drawJpg(&file, 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
+            M5.Display.drawJpg(&file, 0, 0, 0, 0, 0, 0, kAutoFit, kAutoFit, datum_t::middle_center);
         }
-        else if (endsWithIgnoreCase(path, ".png"))
+        else
         {
-            M5.Display.drawPng(&file, 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
+            M5.Display.drawPng(&file, 0, 0, 0, 0, 0, 0, kAutoFit, kAutoFit, datum_t::middle_center);
         }
     }
 
@@ -150,6 +174,28 @@ void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
 
     // M5PaperColor は 1 画面のリフレッシュに 15〜30 秒かかる。
     // 待たずにスリープすると描画が途中で切れるため、必ず完了を待つ。
+    M5.Display.waitDisplay();
+}
+
+void M5Helper::drawImageFromMemory(const uint8_t *data, size_t size, const DeviceProfile &profile)
+{
+    if (data == nullptr || size == 0)
+    {
+        return;
+    }
+
+    beginImageFrame(displayRotationForHeader(data, size, profile));
+
+    if (isPng(data, size))
+    {
+        M5.Display.drawPng(data, size, 0, 0, 0, 0, 0, 0, kAutoFit, kAutoFit, datum_t::middle_center);
+    }
+    else
+    {
+        M5.Display.drawJpg(data, size, 0, 0, 0, 0, 0, 0, kAutoFit, kAutoFit, datum_t::middle_center);
+    }
+
+    M5.Display.endWrite();
     M5.Display.waitDisplay();
 }
 

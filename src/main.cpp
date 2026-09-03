@@ -4,6 +4,7 @@
 #include <DeviceProfile.h>
 #include <ImageFile.h>
 #include <Menu.h>
+#include <WebTransfer.h>
 
 // M5Unified が機種を自動判定できなかったときの保険。
 // platformio.ini の env ごとに -DCARDCASE_FALLBACK_BOARD で指定する。
@@ -21,12 +22,16 @@
 /// いま画面に出しているもの
 enum class Mode
 {
-  Browsing, // 一覧
-  Viewing,  // 画像
+  Browsing,     // 一覧
+  Viewing,      // 画像
+  Transferring, // WiFi で画像を待っている
 };
 
 DeviceProfile profile;
 Menu menu;
+
+void drawHeader();
+void halt(const String &message);
 Mode mode = Mode::Browsing;
 unsigned long viewingUntil = 0;
 
@@ -40,10 +45,10 @@ void enterDeepSleep()
   M5.Power.deepSleep();
 }
 
-/// 一覧で選ばれたときに全画面表示する
-void onSelectImage(const MenuItem &item)
+/// 画像を全画面表示して、戻れる状態にする
+void showImage(const String &path)
 {
-  M5Helper::drawImageFromSD(item.value, profile);
+  M5Helper::drawImageFromSD(path, profile);
 
   // 電源ボタンで復帰すると M5.begin() がパネルを初期化し直すため、
   // 電子ペーパーが大きく点滅する。ボタンのある機種では、すぐ寝ずに
@@ -124,6 +129,35 @@ bool wasReturnPressed()
   return M5.BtnA.wasPressed() || M5.BtnB.wasPressed() || M5.BtnC.wasPressed();
 }
 
+/// WiFi で画像を受け取る状態に入る
+void startTransfer()
+{
+  if (!WebTransfer::begin(profile))
+  {
+    halt("failed to start WiFi.");
+  }
+
+  M5.Display.startWrite();
+  M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
+  M5.Display.fillScreen(TFT_WHITE);
+  drawHeader();
+  M5.Display.endWrite();
+
+  WebTransfer::render(profile, M5.Display.getCursorY());
+  mode = Mode::Transferring;
+}
+
+/// 一覧で選ばれたときの処理
+void onSelectItem(const MenuItem &item)
+{
+  if (item.kind == MenuItemKind::Transfer)
+  {
+    startTransfer();
+    return;
+  }
+  showImage(item.value);
+}
+
 /// SD を走査して画像ファイルを一覧に積む
 bool collectImages()
 {
@@ -139,7 +173,7 @@ bool collectImages()
     if (!file.isDirectory())
     {
       String filename = file.name();
-      if (ImageFile::isListable(filename) && !menu.addItem(filename, ImageFile::rootPath(filename)))
+      if (ImageFile::isListable(filename) && !menu.addItem(MenuItemKind::Image, filename, ImageFile::rootPath(filename)))
       {
         // 一覧の上限に達した
         file.close();
@@ -186,20 +220,19 @@ void setup()
   // 電子ペーパーは endWrite のたびに画面を更新し、M5PaperColor では
   // 1 回あたり十数秒かかる。進捗を逐一表示すると起動が数分になるので、
   // SD の処理を先に終わらせてから、画面は最後に 1 回だけ描く。
-  if (!Storage::begin())
+  // SD が無くても WiFi で画像を受け取って表示はできるので、ここでは止めない
+  if (Storage::begin())
   {
-    halt("mount SD card .. NG");
+    collectImages();
+  }
+  else
+  {
+    M5.Log(esp_log_level_t::ESP_LOG_WARN, "SD card is not available\n");
   }
 
-  if (!collectImages())
-  {
-    halt("failed to open SD card");
-  }
-
-  if (menu.itemCount() == 0)
-  {
-    halt("It does not found images.");
-  }
+  // WiFi で受け取る導線を先頭に置く。
+  // 画像が 1 枚も無くてもここから追加できるので、halt させない。
+  menu.addItem(MenuItemKind::Transfer, "[Receive by WiFi]", "");
 
   if (!profile.isOperable())
   {
@@ -212,13 +245,39 @@ void setup()
   M5.Display.fillScreen(TFT_WHITE);
   drawHeader();
   M5.Display.println("");
-  menu.begin(profile, M5.Display.getCursorY(), onSelectImage);
+  menu.begin(profile, M5.Display.getCursorY(), onSelectItem);
   M5.Display.endWrite();
 }
 
 void loop()
 {
   M5.update();
+
+  if (mode == Mode::Transferring)
+  {
+    WebTransfer::update();
+
+    if (WebTransfer::hasReceivedImage())
+    {
+      // 受け取ったらすぐ表示する。待つ必要はないので電波は止める。
+      WebTransfer::end();
+
+      size_t size = 0;
+      const uint8_t *image = WebTransfer::receivedImage(size);
+      M5Helper::drawImageFromMemory(image, size, profile);
+      WebTransfer::releaseReceivedImage();
+
+      mode = Mode::Viewing;
+      viewingUntil = millis() + VIEWING_TIMEOUT_MS;
+    }
+    else if (wasReturnPressed())
+    {
+      WebTransfer::end();
+      returnToMenu();
+    }
+    delay(5);
+    return;
+  }
 
   if (mode == Mode::Viewing)
   {
