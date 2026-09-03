@@ -56,7 +56,10 @@ private:
 
     int _topY = 0;
     int _rowHeight = 0;
+    int _footerTextSize = 2;
     bool _useCursor = false; // ボタン操作のカーソルを表示するか
+
+    const char *operationGuide() const;
 
     void drawRow(int index);
     void confirm();

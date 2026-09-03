@@ -45,6 +45,14 @@ pio run -e M5PaperS3 -t upload
 
 `env` は上の対応機種の表を参照してください。省略した場合は `M5PaperS3` が対象になります。
 
+### 書き込みでエラーになるとき
+
+```
+A fatal error occurred: This chip is ESP32, not ESP32-S3. Wrong --chip argument?
+```
+
+機種と `env` が食い違っています。`-e` を省略すると `M5PaperS3` が対象になるため、M5Paper v1.1 に書き込むときは `-e M5Paper` を明示してください。VS Code から操作する場合は、PlatformIO のサイドバーか下部のステータスバーで `env` を切り替えてから実行します。
+
 ## Development
 
 開発ルールは [AGENTS.md](AGENTS.md) にまとめています。

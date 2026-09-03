@@ -9,8 +9,9 @@ namespace
     // 一覧の左端の余白
     const int kPaddingX = 4;
 
-    // フッタ（ページ表示と操作ガイド）の文字サイズ
-    const int kFooterTextSize = 2;
+    // フッタ（ページ表示と操作ガイド）の文字サイズの上限と下限
+    const int kFooterTextSizeMax = 4;
+    const int kFooterTextSizeMin = 2;
 }
 
 bool Menu::addItem(const String &title, const String &value)
@@ -23,6 +24,20 @@ bool Menu::addItem(const String &title, const String &value)
     _items[_itemCount].value = value;
     _itemCount++;
     return true;
+}
+
+const char *Menu::operationGuide() const
+{
+    // 画面の幅が狭い機種でも 1 行に収めたいので短く書く
+    if (_profile.buttonCount >= 3)
+    {
+        return "A:Prev  B:OK  C:Next";
+    }
+    if (_profile.buttonCount == 2)
+    {
+        return "A:Next  B:OK";
+    }
+    return "Touch file name!";
 }
 
 void Menu::begin(const DeviceProfile &profile, int topY, SelectHandler onSelect)
@@ -42,8 +57,23 @@ void Menu::begin(const DeviceProfile &profile, int topY, SelectHandler onSelect)
         _rowHeight = profile.menuTextSize * 8;
     }
 
+    // 操作ガイドは折り返すと読みにくいので、幅に収まる最大の文字サイズを選ぶ。
+    // 画面の幅が機種ごとに違うため、固定値にはできない。
+    const char *guide = operationGuide();
+    int guideWidth = M5.Display.width() - kPaddingX * 2;
+    _footerTextSize = kFooterTextSizeMin;
+    for (int size = kFooterTextSizeMax; size >= kFooterTextSizeMin; size--)
+    {
+        M5.Display.setTextSize(size);
+        if (M5.Display.textWidth(guide) <= guideWidth)
+        {
+            _footerTextSize = size;
+            break;
+        }
+    }
+
     // フッタの分を残して 1 ページの件数を決める
-    M5.Display.setTextSize(kFooterTextSize);
+    M5.Display.setTextSize(_footerTextSize);
     int footerHeight = M5.Display.fontHeight() * 2;
     int listHeight = M5.Display.height() - _topY - footerHeight;
 
@@ -100,7 +130,7 @@ void Menu::render()
 
     // フッタ：ページ位置と操作ガイド
     int footerY = _topY + listHeight;
-    M5.Display.setTextSize(kFooterTextSize);
+    M5.Display.setTextSize(_footerTextSize);
     M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
     M5.Display.fillRect(0, footerY, M5.Display.width(), M5.Display.height() - footerY, TFT_WHITE);
     M5.Display.setCursor(kPaddingX, footerY);
@@ -115,18 +145,7 @@ void Menu::render()
     }
 
     M5.Display.setCursor(kPaddingX, M5.Display.getCursorY());
-    if (_profile.buttonCount >= 3)
-    {
-        M5.Display.println("BtnA:Prev  BtnB:Select  BtnC:Next");
-    }
-    else if (_profile.buttonCount == 2)
-    {
-        M5.Display.println("BtnA:Next  BtnB:Select");
-    }
-    else
-    {
-        M5.Display.println("Touch file name!");
-    }
+    M5.Display.println(operationGuide());
 }
 
 void Menu::confirm()
