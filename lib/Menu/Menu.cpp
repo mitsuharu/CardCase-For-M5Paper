@@ -6,9 +6,6 @@
 
 namespace
 {
-    // 一覧の左端の余白
-    const int kPaddingX = 4;
-
     // フッタ（ページ表示と操作ガイド）の文字サイズの上限と下限
     const int kFooterTextSizeMax = 4;
     const int kFooterTextSizeMin = 2;
@@ -21,12 +18,13 @@ namespace
     const unsigned long kSlowRedrawDelayMs = 1200;
 }
 
-bool Menu::addItem(const String &title, const String &value)
+bool Menu::addItem(MenuItemKind kind, const String &title, const String &value)
 {
     if (_itemCount >= kMaxItems)
     {
         return false;
     }
+    _items[_itemCount].kind = kind;
     _items[_itemCount].title = title;
     _items[_itemCount].value = value;
     _itemCount++;
@@ -104,7 +102,7 @@ void Menu::begin(const DeviceProfile &profile, int topY, SelectHandler onSelect)
     // 操作ガイドは折り返すと読みにくいので、幅に収まる最大の文字サイズを選ぶ。
     // 画面の幅が機種ごとに違うため、固定値にはできない。
     String guide = operationGuide();
-    int guideWidth = M5.Display.width() - kPaddingX * 2;
+    int guideWidth = M5.Display.width() - _profile.margin() * 2;
     _footerTextSize = kFooterTextSizeMin;
     for (int size = kFooterTextSizeMax; size >= kFooterTextSizeMin; size--)
     {
@@ -150,18 +148,16 @@ void Menu::drawRow(int index)
     M5.Display.setTextSize(_profile.menuTextSize);
     M5.Display.setTextColor(fg, bg);
     M5.Display.setTextWrap(false);
-    M5.Display.setCursor(kPaddingX, y);
+    M5.Display.setCursor(_profile.margin(), y);
     M5.Display.print(_items[index].title.c_str());
     M5.Display.setTextWrap(true);
 }
 
 void Menu::render()
 {
-    if (M5.Display.isEPD())
-    {
-        // 一覧はカーソル移動で何度も描き直すので、画質より速度を優先する
-        M5.Display.setEpdMode(epd_mode_t::epd_fastest);
-    }
+    // 描画モードは呼び出し側が決める。
+    // 画像から戻ってきたときは残像を消したいので画質を優先し、
+    // カーソル移動のときは速さを優先する、というように場面で変わるため。
 
     // 電子ペーパーは endWrite のたびに画面を更新する。
     // 行ごとに更新すると 1 行ずつ待たされるので、一覧全体を 1 回にまとめる。
@@ -181,7 +177,7 @@ void Menu::render()
     M5.Display.setTextSize(_footerTextSize);
     M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
     M5.Display.fillRect(0, footerY, M5.Display.width(), M5.Display.height() - footerY, TFT_WHITE);
-    M5.Display.setCursor(kPaddingX, footerY);
+    M5.Display.setCursor(_profile.margin(), footerY);
 
     if (_selection.pageCount() > 1)
     {
@@ -192,7 +188,7 @@ void Menu::render()
         M5.Display.println("");
     }
 
-    M5.Display.setCursor(kPaddingX, M5.Display.getCursorY());
+    M5.Display.setCursor(_profile.margin(), M5.Display.getCursorY());
     M5.Display.println(operationGuide().c_str());
 
     M5.Display.endWrite();
@@ -214,6 +210,12 @@ void Menu::requestRedraw(int previousIndex, int previousPage)
         _redrawPending = true;
         _redrawAt = millis() + kSlowRedrawDelayMs;
         return;
+    }
+
+    // カーソルを追うだけなので速さを優先する
+    if (M5.Display.isEPD())
+    {
+        M5.Display.setEpdMode(epd_mode_t::epd_fastest);
     }
 
     if (_selection.pageIndex() != previousPage)
@@ -293,6 +295,10 @@ void Menu::update()
     // 待ち時間が過ぎたらまとめて描き直す
     if (_redrawPending && static_cast<long>(millis() - _redrawAt) >= 0)
     {
+        if (M5.Display.isEPD())
+        {
+            M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+        }
         render();
         return;
     }

@@ -11,11 +11,19 @@ using String = std::string;
 #include <DeviceProfile.h>
 #include "Selection/Selection.h"
 
+/// 一覧の項目の種類
+enum class MenuItemKind
+{
+    Image,    // SD 内の画像。value は画像のパス
+    Transfer, // WiFi で画像を受け取る
+};
+
 /// 一覧に載せる 1 項目
 struct MenuItem
 {
+    MenuItemKind kind = MenuItemKind::Image;
     String title; // 画面に表示する文字列
-    String value; // 選ばれたときに呼び出し側へ渡す値（画像ファイルのパスなど）
+    String value; // 選ばれたときに呼び出し側へ渡す値（画像のパスなど）
 };
 
 /**
@@ -33,7 +41,7 @@ public:
     static const int kMaxItems = 32;
 
     /// 項目を追加する。上限を超えた場合は false を返す。
-    bool addItem(const String &title, const String &value);
+    bool addItem(MenuItemKind kind, const String &title, const String &value);
 
     int itemCount() const { return _itemCount; }
 

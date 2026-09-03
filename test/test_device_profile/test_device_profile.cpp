@@ -102,6 +102,17 @@ void test_palette_and_optional_features()
     TEST_ASSERT_FALSE(profileFor(DeviceKind::M5Paper).hasFrontlight);
 }
 
+void test_only_m5paper_needs_extra_clear()
+{
+    // QR のような細かい模様のあとに残像が残るのはこの機種だけ。
+    // 消すには更新が 2 回増えるので、他機種には入れない。
+    TEST_ASSERT_TRUE(profileFor(DeviceKind::M5Paper).needsExtraClear);
+
+    TEST_ASSERT_FALSE(profileFor(DeviceKind::PaperS3).needsExtraClear);
+    TEST_ASSERT_FALSE(profileFor(DeviceKind::PaperColor).needsExtraClear);
+    TEST_ASSERT_FALSE(profileFor(DeviceKind::PaperMono).needsExtraClear);
+}
+
 void test_only_paper_color_has_slow_refresh()
 {
     // M5PaperColor は部分更新が無く、1 回の更新に十数秒かかる
@@ -110,6 +121,19 @@ void test_only_paper_color_has_slow_refresh()
     TEST_ASSERT_FALSE(profileFor(DeviceKind::M5Paper).slowRefresh);
     TEST_ASSERT_FALSE(profileFor(DeviceKind::PaperS3).slowRefresh);
     TEST_ASSERT_FALSE(profileFor(DeviceKind::PaperMono).slowRefresh);
+}
+
+void test_margin_scales_with_the_screen()
+{
+    // ベゼルに隠れないよう、画面の幅に対する割合で決める。
+    // 固定値だと幅の狭い機種で相対的に足りなくなる。
+    TEST_ASSERT_EQUAL_INT(21, profileFor(DeviceKind::M5Paper).margin());
+    TEST_ASSERT_EQUAL_INT(21, profileFor(DeviceKind::PaperS3).margin());
+    TEST_ASSERT_EQUAL_INT(19, profileFor(DeviceKind::PaperMono).margin());
+    TEST_ASSERT_EQUAL_INT(16, profileFor(DeviceKind::PaperColor).margin());
+
+    // 機種が分からない場合でも 0 にはしない
+    TEST_ASSERT_TRUE(profileFor(DeviceKind::Unknown).margin() >= 8);
 }
 
 void test_unknown_device_is_not_operable()
@@ -131,7 +155,9 @@ int runUnityTests(void)
     RUN_TEST(test_paper_s3_has_touch_but_no_buttons);
     RUN_TEST(test_display_sizes);
     RUN_TEST(test_palette_and_optional_features);
+    RUN_TEST(test_only_m5paper_needs_extra_clear);
     RUN_TEST(test_only_paper_color_has_slow_refresh);
+    RUN_TEST(test_margin_scales_with_the_screen);
     RUN_TEST(test_unknown_device_is_not_operable);
     return UNITY_END();
 }

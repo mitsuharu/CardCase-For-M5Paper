@@ -106,6 +106,16 @@ struct DeviceProfile
     bool hasNfc = false;
 
     /**
+     * 細かい模様のあとに残像が残る機種か（M5Paper v1.1）。
+     *
+     * QR のような高コントラストの細かい模様を出したあと、画質優先の波形で
+     * 塗り直しても消え切らず、次に描くものの下に透ける。この機種では
+     * 一度黒で塗って粒子を反転させてから白に戻す必要がある。
+     * 更新が 2 回増えるので、必要な機種だけに限る。
+     */
+    bool needsExtraClear = false;
+
+    /**
      * 1 回の画面更新に十数秒かかる機種か（M5PaperColor）。
      * この機種のパネルは部分更新を持たず、更新のたびに全面を転送するため、
      * 描画をまとめるだけでなく、更新の回数そのものを減らす必要がある。
@@ -116,6 +126,19 @@ struct DeviceProfile
     int menuTextSize = 8;
 
     bool isColor() const { return palette == DevicePalette::Color6; }
+
+    /**
+     * 画面の端に取る余白。
+     *
+     * 筐体のベゼルが画面の縁に掛かるため、端まで描くと文字が読めなくなる。
+     * 画面の大きさに対する割合で決める。固定値だと、幅の狭い機種
+     * （M5PaperColor は 400px）で相対的に足りなくなる。
+     */
+    int margin() const
+    {
+        int value = width / 25;
+        return (value < 8) ? 8 : value;
+    }
 
     /// ボタンで操作できるか
     bool hasButtons() const

@@ -4,6 +4,7 @@
 #include <DeviceProfile.h>
 #include <ImageFile.h>
 #include <Menu.h>
+#include <WebTransfer.h>
 
 // M5Unified が機種を自動判定できなかったときの保険。
 // platformio.ini の env ごとに -DCARDCASE_FALLBACK_BOARD で指定する。
@@ -21,12 +22,16 @@
 /// いま画面に出しているもの
 enum class Mode
 {
-  Browsing, // 一覧
-  Viewing,  // 画像
+  Browsing,     // 一覧
+  Viewing,      // 画像
+  Transferring, // WiFi で画像を待っている
 };
 
 DeviceProfile profile;
 Menu menu;
+
+void drawHeader();
+void halt(const String &message);
 Mode mode = Mode::Browsing;
 unsigned long viewingUntil = 0;
 
@@ -40,10 +45,40 @@ void enterDeepSleep()
   M5.Power.deepSleep();
 }
 
-/// 一覧で選ばれたときに全画面表示する
-void onSelectImage(const MenuItem &item)
+/// 画面を 1 色で塗って更新する
+void fillAndDisplay(uint16_t color)
 {
-  M5Helper::drawImageFromSD(item.value, profile);
+  M5.Display.startWrite();
+  M5.Display.fillScreen(color);
+  M5.Display.endWrite();
+  M5.Display.waitDisplay();
+}
+
+/**
+ * 画面を消し切ってから戻る。
+ *
+ * QR は細かい白黒の模様なので、白で 1 回塗るだけでは消え切らず、
+ * 次に描くものの下に模様が透ける。一度黒で塗って粒子を反転させてから
+ * 白に戻すと確実に消える。
+ */
+void clearScreen()
+{
+  // 残像が残るのはこの機種だけ。他は画像を描くときの更新で消えるので、
+  // 更新を増やしても待ち時間が延びるだけになる。
+  if (!M5.Display.isEPD() || !profile.needsExtraClear)
+  {
+    return;
+  }
+
+  M5.Display.setEpdMode(epd_mode_t::epd_quality);
+  fillAndDisplay(TFT_BLACK);
+  fillAndDisplay(TFT_WHITE);
+}
+
+/// 画像を全画面表示して、戻れる状態にする
+void showImage(const String &path)
+{
+  M5Helper::drawImageFromSD(path, profile);
 
   // 電源ボタンで復帰すると M5.begin() がパネルを初期化し直すため、
   // 電子ペーパーが大きく点滅する。ボタンのある機種では、すぐ寝ずに
@@ -62,15 +97,31 @@ void onSelectImage(const MenuItem &item)
 /// 画面幅に合わせた見出しを描く
 void drawHeader()
 {
-  int headerTextSize = profile.menuTextSize / 2;
-  if (headerTextSize < 2)
+  char title[48];
+  snprintf(title, sizeof(title), "CardCase for %s", profile.name);
+
+  // 折り返すと機種名が次の行にこぼれて読みにくいので、
+  // 幅に収まる最大のサイズを選ぶ。余白のぶん使える幅が減るため、
+  // 画面の大きさだけで決めると機種によって溢れる。
+  int available = M5.Display.width() - profile.margin() * 2;
+  int headerTextSize = 2;
+  for (int size = profile.menuTextSize / 2; size >= 2; size--)
   {
-    headerTextSize = 2;
+    M5.Display.setTextSize(size);
+    if (M5.Display.textWidth(title) <= available)
+    {
+      headerTextSize = size;
+      break;
+    }
   }
+
   M5.Display.setTextSize(headerTextSize);
   M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
-  M5.Display.setCursor(0, 0);
-  M5.Display.printf("CardCase for %s\n", profile.name);
+  M5.Display.setTextWrap(false);
+  // 端まで描くとベゼルに隠れる
+  M5.Display.setCursor(profile.margin(), profile.margin());
+  M5.Display.println(title);
+  M5.Display.setTextWrap(true);
 }
 
 /// 致命的なエラーを表示して停止する
@@ -79,7 +130,9 @@ void halt(const String &message)
   M5.Display.startWrite();
   M5.Display.fillScreen(TFT_WHITE);
   drawHeader();
-  M5.Display.println(message);
+  // 改行でカーソルが左端に戻るので、位置を指定し直す
+  M5.Display.setCursor(profile.margin(), M5.Display.getCursorY());
+  M5.Display.print(message);
   M5.Display.endWrite();
   M5.Display.waitDisplay();
 
@@ -98,8 +151,9 @@ void returnToMenu()
   M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
   if (M5.Display.isEPD())
   {
-    // 一覧に戻るだけなので、画質より速さと点滅の少なさを優先する
-    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    // 直前まで画像を出していて画面全体が変わるので、残像を残さないようにする。
+    // カーソル移動のような部分的な描き直しでは Menu 側が速さを優先する。
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
   }
 
   M5.Display.fillScreen(TFT_WHITE);
@@ -124,6 +178,44 @@ bool wasReturnPressed()
   return M5.BtnA.wasPressed() || M5.BtnB.wasPressed() || M5.BtnC.wasPressed();
 }
 
+/// WiFi で画像を受け取る状態に入る
+void startTransfer()
+{
+  if (!WebTransfer::begin(profile))
+  {
+    halt("failed to start WiFi.");
+  }
+
+  M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
+  if (M5.Display.isEPD())
+  {
+    // QR は細かい模様なので、読み取れるようにしっかり出す。
+    // 速い波形だと前の画面が残り、模様に重なって読めなくなる。
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
+  }
+
+  // 見出しから QR までを 1 回の更新にまとめる
+  M5.Display.startWrite();
+  M5.Display.fillScreen(TFT_WHITE);
+  drawHeader();
+  WebTransfer::render(profile, M5.Display.getCursorY());
+  M5.Display.endWrite();
+  M5.Display.waitDisplay();
+
+  mode = Mode::Transferring;
+}
+
+/// 一覧で選ばれたときの処理
+void onSelectItem(const MenuItem &item)
+{
+  if (item.kind == MenuItemKind::Transfer)
+  {
+    startTransfer();
+    return;
+  }
+  showImage(item.value);
+}
+
 /// SD を走査して画像ファイルを一覧に積む
 bool collectImages()
 {
@@ -139,7 +231,7 @@ bool collectImages()
     if (!file.isDirectory())
     {
       String filename = file.name();
-      if (ImageFile::isListable(filename) && !menu.addItem(filename, ImageFile::rootPath(filename)))
+      if (ImageFile::isListable(filename) && !menu.addItem(MenuItemKind::Image, filename, ImageFile::rootPath(filename)))
       {
         // 一覧の上限に達した
         file.close();
@@ -175,7 +267,8 @@ void setup()
   M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
   if (M5.Display.isEPD())
   {
-    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    // 起動直後は画面に前回の画像が残っているので、消しきれる波形で出す
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
   }
 
   if (profile.kind == DeviceKind::Unknown)
@@ -186,20 +279,19 @@ void setup()
   // 電子ペーパーは endWrite のたびに画面を更新し、M5PaperColor では
   // 1 回あたり十数秒かかる。進捗を逐一表示すると起動が数分になるので、
   // SD の処理を先に終わらせてから、画面は最後に 1 回だけ描く。
-  if (!Storage::begin())
+  // SD が無くても WiFi で画像を受け取って表示はできるので、ここでは止めない
+  if (Storage::begin())
   {
-    halt("mount SD card .. NG");
+    collectImages();
+  }
+  else
+  {
+    M5.Log(esp_log_level_t::ESP_LOG_WARN, "SD card is not available\n");
   }
 
-  if (!collectImages())
-  {
-    halt("failed to open SD card");
-  }
-
-  if (menu.itemCount() == 0)
-  {
-    halt("It does not found images.");
-  }
+  // WiFi で受け取る導線を先頭に置く。
+  // 画像が 1 枚も無くてもここから追加できるので、halt させない。
+  menu.addItem(MenuItemKind::Transfer, "[WiFi]", "");
 
   if (!profile.isOperable())
   {
@@ -212,13 +304,53 @@ void setup()
   M5.Display.fillScreen(TFT_WHITE);
   drawHeader();
   M5.Display.println("");
-  menu.begin(profile, M5.Display.getCursorY(), onSelectImage);
+  menu.begin(profile, M5.Display.getCursorY(), onSelectItem);
   M5.Display.endWrite();
 }
 
 void loop()
 {
   M5.update();
+
+  if (mode == Mode::Transferring)
+  {
+    WebTransfer::update();
+
+    if (WebTransfer::hasReceivedImage())
+    {
+      // 受け取ったらすぐ表示する。待つ必要はないので電波は止める。
+      WebTransfer::end();
+
+      // QR の残像が画像に透けないよう、一度消してから描く
+      clearScreen();
+
+      // SD に保存できていればファイルから、無ければメモリから表示する
+      String path = WebTransfer::receivedImagePath();
+      if (path.length() > 0)
+      {
+        WebTransfer::releaseReceivedImage();
+        showImage(path);
+      }
+      else
+      {
+        size_t size = 0;
+        const uint8_t *image = WebTransfer::receivedImage(size);
+        M5Helper::drawImageFromMemory(image, size, profile);
+        WebTransfer::releaseReceivedImage();
+
+        mode = Mode::Viewing;
+        viewingUntil = millis() + VIEWING_TIMEOUT_MS;
+      }
+    }
+    else if (wasReturnPressed())
+    {
+      WebTransfer::end();
+      clearScreen();
+      returnToMenu();
+    }
+    delay(5);
+    return;
+  }
 
   if (mode == Mode::Viewing)
   {
