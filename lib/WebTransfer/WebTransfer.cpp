@@ -240,6 +240,10 @@ function show(text, cls){ status.textContent = text; status.className = cls || '
 
 const URL_TEXT = 'http://192.168.4.1';
 
+// このアクセスポイントはインターネットに出られないので、
+// 端末が携帯回線を優先して本体に届かないことがある。
+const MOBILE_HINT = '<br>繋がりにくいときは、モバイルネットワークをオフにしてみてください。';
+
 // クリップボードの API は https でないと使えないので、古いやり方を用意しておく
 function copyUrl() {
   const button = document.getElementById('copy');
@@ -271,6 +275,7 @@ function copyUrl() {
       + 'WiFi の接続画面として開かれているためです。<br>'
       + 'この画面を閉じて、ブラウザで <a href="' + URL_TEXT + '">' + URL_TEXT + '</a> を開いてください。'
       + 'WiFi は繋いだままにしておいてください。'
+      + MOBILE_HINT
       + '<br><button type="button" class="copy" id="copy">URL をコピー</button>';
     document.getElementById('copy').addEventListener('click', copyUrl);
   } else if (/iPhone|iPad|iPod/i.test(ua)) {
@@ -278,7 +283,8 @@ function copyUrl() {
     note.innerHTML = 'この画面で<strong>カメラは使えません</strong>。'
       + 'WiFi の接続画面として開かれているためです。<br>'
       + '<strong>写真ライブラリから選んでください。</strong>'
-      + '撮った写真を送るときは、先にカメラアプリで撮影しておいてください。';
+      + '撮った写真を送るときは、先にカメラアプリで撮影しておいてください。'
+      + MOBILE_HINT;
   } else {
     note.style.display = 'none';
   }
