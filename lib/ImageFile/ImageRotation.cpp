@@ -3,7 +3,7 @@
 
 namespace ImageFile
 {
-    int orientationFitSteps(int imageWidth, int imageHeight, int screenWidth, int screenHeight)
+    int orientationFitSteps(int imageWidth, int imageHeight, int screenWidth, int screenHeight, int fitSteps)
     {
         if (imageWidth <= 0 || imageHeight <= 0 || screenWidth <= 0 || screenHeight <= 0)
         {
@@ -13,11 +13,11 @@ namespace ImageFile
         bool imageIsLandscape = imageWidth > imageHeight;
         bool screenIsLandscape = screenWidth > screenHeight;
 
-        return (imageIsLandscape == screenIsLandscape) ? 0 : kFitRotationSteps;
+        return (imageIsLandscape == screenIsLandscape) ? 0 : fitSteps;
     }
 
     int displayRotation(int orientation, int imageWidth, int imageHeight,
-                        int baseRotation, int screenWidth, int screenHeight)
+                        int baseRotation, int screenWidth, int screenHeight, int fitSteps)
     {
         int rotation = baseRotation + rotationStepsFor(orientation);
 
@@ -30,7 +30,7 @@ namespace ImageFile
 
             // 比較は物理的な画面の向きで行う。
             // 画面を回しても本体の向きは変わらないので、画面側は入れ替えない。
-            rotation += orientationFitSteps(shownWidth, shownHeight, screenWidth, screenHeight);
+            rotation += orientationFitSteps(shownWidth, shownHeight, screenWidth, screenHeight, fitSteps);
         }
 
         return rotation & 3;

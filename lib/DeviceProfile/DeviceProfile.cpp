@@ -26,6 +26,8 @@ DeviceProfile profileFor(DeviceKind kind)
         p.width = 540;
         p.height = 960;
         p.imageRotation = DeviceRotation::Down; // 筐体のフックに合わせて上下反転
+        // 画像全体が 180 度回っているので、向きを合わせる回転も他機種と逆になる
+        p.imageFitRotation = FitRotation::Clockwise;
         p.hasTouch = true;
         // 物理ボタンは電源ボタンのみなので、一覧の操作はタッチに任せる
         p.palette = DevicePalette::Gray16;

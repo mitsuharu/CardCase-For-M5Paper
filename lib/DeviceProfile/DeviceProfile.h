@@ -47,6 +47,19 @@ enum class ButtonRole
     Select, // 決定
 };
 
+/**
+ * 画面の向きに合わせて画像を回すときの向き。
+ *
+ * どちらに回しても画面には収まるので、見るときに本体をどちらへ傾けるかで決める。
+ * M5PaperS3 はフックに合わせて画像全体を 180 度回しているため、
+ * 傾ける向きも他機種と逆になる。
+ */
+enum class FitRotation
+{
+    CounterClockwise,
+    Clockwise,
+};
+
 /// 画面が表現できる色
 enum class DevicePalette
 {
@@ -72,6 +85,9 @@ struct DeviceProfile
      * フックのない他機種は Up のまま。
      */
     DeviceRotation imageRotation = DeviceRotation::Up;
+
+    /// 横長の画像を画面の向きに合わせるときに回す向き
+    FitRotation imageFitRotation = FitRotation::CounterClockwise;
 
     /// タッチパネルの有無。M5PaperColor だけ非搭載でボタン操作しかできない。
     bool hasTouch = false;

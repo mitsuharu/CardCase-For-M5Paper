@@ -18,6 +18,16 @@ void test_image_rotation_is_flipped_only_on_paper_s3()
     TEST_ASSERT_TRUE(profileFor(DeviceKind::PaperMono).imageRotation == DeviceRotation::Up);
 }
 
+void test_fit_rotation_is_reversed_on_paper_s3()
+{
+    // M5PaperS3 は画像全体が 180 度回っているので、画面に合わせる回転も逆向きになる
+    TEST_ASSERT_TRUE(profileFor(DeviceKind::PaperS3).imageFitRotation == FitRotation::Clockwise);
+
+    TEST_ASSERT_TRUE(profileFor(DeviceKind::M5Paper).imageFitRotation == FitRotation::CounterClockwise);
+    TEST_ASSERT_TRUE(profileFor(DeviceKind::PaperColor).imageFitRotation == FitRotation::CounterClockwise);
+    TEST_ASSERT_TRUE(profileFor(DeviceKind::PaperMono).imageFitRotation == FitRotation::CounterClockwise);
+}
+
 void test_paper_color_has_no_touch_but_has_buttons()
 {
     DeviceProfile profile = profileFor(DeviceKind::PaperColor);
@@ -114,6 +124,7 @@ int runUnityTests(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_image_rotation_is_flipped_only_on_paper_s3);
+    RUN_TEST(test_fit_rotation_is_reversed_on_paper_s3);
     RUN_TEST(test_paper_color_has_no_touch_but_has_buttons);
     RUN_TEST(test_m5paper_follows_rotary_switch_order);
     RUN_TEST(test_paper_mono_uses_two_buttons);

@@ -78,9 +78,13 @@ namespace
         }
         free(buffer);
 
+        int fitSteps = (profile.imageFitRotation == FitRotation::Clockwise)
+                           ? ImageFile::kFitStepsClockwise
+                           : ImageFile::kFitStepsCounterClockwise;
+
         return ImageFile::displayRotation(orientation, imageWidth, imageHeight,
                                           static_cast<int>(profile.imageRotation),
-                                          profile.width, profile.height);
+                                          profile.width, profile.height, fitSteps);
     }
 }
 

@@ -12,17 +12,18 @@
  */
 namespace ImageFile
 {
-    /// 向きを揃えるときに回す向き（反時計回りに 90 度 = 時計回りに 3 回）
-    const int kFitRotationSteps = 3;
+    /// 向きを揃えるときに回す量。時計回りに 90 度を何回か。
+    const int kFitStepsClockwise = 1;
+    const int kFitStepsCounterClockwise = 3;
 
     /**
      * 画像と画面の向きが食い違っているときに、追加で回す回数を返す。
-     * 揃っている場合は 0、食い違っている場合は kFitRotationSteps。
+     * 揃っている場合は 0、食い違っている場合は fitSteps。
      *
-     * EXIF による回転と違ってどちら向きに回しても収まるが、
-     * 本体を反時計回りに傾けて見る向きに合わせている。
+     * EXIF による回転と違ってどちら向きに回しても画面には収まるので、
+     * どちらに回すかは呼び出し側（機種）が決める。
      */
-    int orientationFitSteps(int imageWidth, int imageHeight, int screenWidth, int screenHeight);
+    int orientationFitSteps(int imageWidth, int imageHeight, int screenWidth, int screenHeight, int fitSteps);
 
     /**
      * 画像を表示するときの画面の回転（0〜3）を返す。
@@ -34,5 +35,5 @@ namespace ImageFile
      * 画面を回しても物理的な向きは変わらないので、ここは入れ替えずに渡すこと。
      */
     int displayRotation(int orientation, int imageWidth, int imageHeight,
-                        int baseRotation, int screenWidth, int screenHeight);
+                        int baseRotation, int screenWidth, int screenHeight, int fitSteps);
 }
