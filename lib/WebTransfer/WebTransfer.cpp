@@ -37,10 +37,15 @@ namespace
     WebServer *server = nullptr;
     DNSServer *dns = nullptr;
 
+    // 受け取ったあと、返事がスマホに届くまでの猶予。
+    // すぐ WiFi を落とすと接続が切れ、ブラウザが「送信中」のまま止まる。
+    const unsigned long kResponseGraceMs = 1500;
+
     String ssid;
     String password;
     String receivedPath;
     bool received = false;
+    unsigned long receivedAt = 0;
 
     uint8_t *buffer = nullptr;
     size_t bufferSize = 0;
@@ -170,6 +175,7 @@ namespace
                 break;
             }
             received = true;
+            receivedAt = millis();
             M5.Log(esp_log_level_t::ESP_LOG_INFO, "upload: received %u bytes (%s)\n",
                    (unsigned)upload.totalSize, usingFile ? "sd" : "memory");
             break;
@@ -199,6 +205,9 @@ h1{font-size:1.3rem;margin:0 0 .25rem}
 p.lead{color:#666;margin:0 0 1.5rem;font-size:.9rem}
 label.pick{display:block;text-align:center;padding:1.5rem;border:2px dashed #bbb;border-radius:10px;
 cursor:pointer;color:#1257a0;font-weight:600}
+.note{margin-top:1rem;padding:.75rem 1rem;background:#fff8e1;border-left:4px solid #d0a000;
+border-radius:0 4px 4px 0;font-size:.85rem;color:#555;line-height:1.6}
+.note code{background:#fff;padding:.1rem .3rem;border-radius:3px}
 input[type=file]{display:none}
 canvas{max-width:100%;margin-top:1rem;border:1px solid #ddd;border-radius:6px;display:none}
 button{width:100%;margin-top:1rem;padding:.9rem;font-size:1rem;font-weight:600;color:#fff;
@@ -211,6 +220,12 @@ button:disabled{background:#9bb4cc}
 <p class="lead">選んだ画像を電子ペーパーに表示します。</p>
 <label class="pick" for="file">画像を選ぶ</label>
 <input type="file" id="file" accept="image/*">
+<p class="note">
+この画面で<strong>カメラは使えません</strong>。WiFi の接続画面として開かれているためで、
+カメラを選ぶと画面が閉じてしまいます。<br>
+<strong>写真ライブラリから選んでください。</strong>
+撮った写真を送りたいときは、先にカメラアプリで撮影しておいてください。
+</p>
 <canvas id="preview"></canvas>
 <button id="send" disabled>送信</button>
 <div id="status"></div>
@@ -227,26 +242,41 @@ let name = 'image.png';
 function show(text, cls){ status.textContent = text; status.className = cls || ''; }
 function toBlob(type, q){ return new Promise(r => preview.toBlob(r, type, q)); }
 
+// カメラで撮った写真は 1200 万画素になることもある。
+// ImageBitmap に展開するとスマホのメモリを使い切って落ちるので、
+// img 要素に読ませてブラウザに任せる。EXIF の向きもここで反映される。
+function load(f) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(); };
+    img.src = url;
+  });
+}
+
 // 指定の倍率で描き直す
-function draw(bitmap, scale) {
-  preview.width = Math.max(1, Math.round(bitmap.width * scale));
-  preview.height = Math.max(1, Math.round(bitmap.height * scale));
+function draw(img, scale) {
+  preview.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  preview.height = Math.max(1, Math.round(img.naturalHeight * scale));
   const ctx = preview.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, preview.width, preview.height);
-  ctx.drawImage(bitmap, 0, 0, preview.width, preview.height);
+  ctx.drawImage(img, 0, 0, preview.width, preview.height);
 }
 
 // 本体が受け取れる大きさに収まるまで、圧縮を強めながら小さくしていく。
-// 図や文字の画像は PNG のまま送りたいので、まず PNG で試す。
-async function encode(bitmap, baseScale) {
-  for (let step = 0; step < 4; step++) {
-    draw(bitmap, baseScale * Math.pow(0.75, step));
+// 試す回数が多いとスマホ側の負荷が大きいので、段階は絞ってある。
+async function encode(img, baseScale) {
+  for (let step = 0; step < 3; step++) {
+    draw(img, baseScale * Math.pow(0.7, step));
 
-    const png = await toBlob('image/png');
-    if (png && png.size <= MAXBYTES) { return { data: png, ext: 'png' }; }
-
-    for (const q of [0.92, 0.8, 0.65, 0.5]) {
+    // 図や文字の画像は PNG のまま送りたいので、最初だけ PNG を試す
+    if (step === 0) {
+      const png = await toBlob('image/png');
+      if (png && png.size <= MAXBYTES) { return { data: png, ext: 'png' }; }
+    }
+    for (const q of [0.9, 0.75, 0.6]) {
       const jpeg = await toBlob('image/jpeg', q);
       if (jpeg && jpeg.size <= MAXBYTES) { return { data: jpeg, ext: 'jpg' }; }
     }
@@ -259,23 +289,21 @@ file.addEventListener('change', async () => {
   if (!f) return;
   show('読み込み中...');
   send.disabled = true;
+  blob = null;
   try {
-    // EXIF の向きをここで反映させる。本体側は回転情報を持たない画像として扱える。
-    const bitmap = await createImageBitmap(f, { imageOrientation: 'from-image' });
+    const img = await load(f);
     // 本体は画像の向きに合わせて画面を回すので、実際に表示される枠は
     // 画像が横長か縦長かで変わる。その枠に収まる大きさまで縮める。
     // 比率は変えない。向きの調整は本体側に任せる。
-    const sameOrientation = (bitmap.width > bitmap.height) === (W > H);
+    const sameOrientation = (img.naturalWidth > img.naturalHeight) === (W > H);
     const boxW = sameOrientation ? W : H;
     const boxH = sameOrientation ? H : W;
-    const scale = Math.min(1, boxW / bitmap.width, boxH / bitmap.height);
+    const scale = Math.min(1, boxW / img.naturalWidth, boxH / img.naturalHeight);
 
-    const encoded = await encode(bitmap, scale);
-    bitmap.close();
+    const encoded = await encode(img, scale);
     preview.style.display = 'block';
 
     if (!encoded) {
-      blob = null;
       show('この画像は大きすぎて送れません', 'ng');
       return;
     }
@@ -345,6 +373,7 @@ namespace WebTransfer
     bool begin(const DeviceProfile &profile)
     {
         received = false;
+        receivedAt = 0;
         receivedPath = "";
         releaseBuffer();
 
@@ -446,7 +475,13 @@ namespace WebTransfer
 
     bool hasReceivedImage()
     {
-        return received;
+        // 返事を返しきるまでは知らせない。
+        // 呼び出し側はその間も update() を回し続けるので、送信が完了する。
+        if (!received)
+        {
+            return false;
+        }
+        return static_cast<long>(millis() - (receivedAt + kResponseGraceMs)) >= 0;
     }
 
     const uint8_t *receivedImage(size_t &size)
@@ -464,6 +499,7 @@ namespace WebTransfer
     {
         releaseBuffer();
         received = false;
+        receivedAt = 0;
         receivedSize = 0;
     }
 }

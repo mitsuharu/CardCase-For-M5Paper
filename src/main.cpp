@@ -103,8 +103,9 @@ void returnToMenu()
   M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
   if (M5.Display.isEPD())
   {
-    // 一覧に戻るだけなので、画質より速さと点滅の少なさを優先する
-    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    // 直前まで画像を出していて画面全体が変わるので、残像を残さないようにする。
+    // カーソル移動のような部分的な描き直しでは Menu 側が速さを優先する。
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
   }
 
   M5.Display.fillScreen(TFT_WHITE);
@@ -218,7 +219,8 @@ void setup()
   M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
   if (M5.Display.isEPD())
   {
-    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+    // 起動直後は画面に前回の画像が残っているので、消しきれる波形で出す
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
   }
 
   if (profile.kind == DeviceKind::Unknown)

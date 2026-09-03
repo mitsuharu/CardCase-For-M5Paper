@@ -158,11 +158,9 @@ void Menu::drawRow(int index)
 
 void Menu::render()
 {
-    if (M5.Display.isEPD())
-    {
-        // 一覧はカーソル移動で何度も描き直すので、画質より速度を優先する
-        M5.Display.setEpdMode(epd_mode_t::epd_fastest);
-    }
+    // 描画モードは呼び出し側が決める。
+    // 画像から戻ってきたときは残像を消したいので画質を優先し、
+    // カーソル移動のときは速さを優先する、というように場面で変わるため。
 
     // 電子ペーパーは endWrite のたびに画面を更新する。
     // 行ごとに更新すると 1 行ずつ待たされるので、一覧全体を 1 回にまとめる。
@@ -215,6 +213,12 @@ void Menu::requestRedraw(int previousIndex, int previousPage)
         _redrawPending = true;
         _redrawAt = millis() + kSlowRedrawDelayMs;
         return;
+    }
+
+    // カーソルを追うだけなので速さを優先する
+    if (M5.Display.isEPD())
+    {
+        M5.Display.setEpdMode(epd_mode_t::epd_fastest);
     }
 
     if (_selection.pageIndex() != previousPage)
@@ -294,6 +298,10 @@ void Menu::update()
     // 待ち時間が過ぎたらまとめて描き直す
     if (_redrawPending && static_cast<long>(millis() - _redrawAt) >= 0)
     {
+        if (M5.Display.isEPD())
+        {
+            M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+        }
         render();
         return;
     }
