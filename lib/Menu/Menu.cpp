@@ -6,9 +6,6 @@
 
 namespace
 {
-    // 一覧の左端の余白
-    const int kPaddingX = 4;
-
     // フッタ（ページ表示と操作ガイド）の文字サイズの上限と下限
     const int kFooterTextSizeMax = 4;
     const int kFooterTextSizeMin = 2;
@@ -105,7 +102,7 @@ void Menu::begin(const DeviceProfile &profile, int topY, SelectHandler onSelect)
     // 操作ガイドは折り返すと読みにくいので、幅に収まる最大の文字サイズを選ぶ。
     // 画面の幅が機種ごとに違うため、固定値にはできない。
     String guide = operationGuide();
-    int guideWidth = M5.Display.width() - kPaddingX * 2;
+    int guideWidth = M5.Display.width() - _profile.margin() * 2;
     _footerTextSize = kFooterTextSizeMin;
     for (int size = kFooterTextSizeMax; size >= kFooterTextSizeMin; size--)
     {
@@ -151,7 +148,7 @@ void Menu::drawRow(int index)
     M5.Display.setTextSize(_profile.menuTextSize);
     M5.Display.setTextColor(fg, bg);
     M5.Display.setTextWrap(false);
-    M5.Display.setCursor(kPaddingX, y);
+    M5.Display.setCursor(_profile.margin(), y);
     M5.Display.print(_items[index].title.c_str());
     M5.Display.setTextWrap(true);
 }
@@ -180,7 +177,7 @@ void Menu::render()
     M5.Display.setTextSize(_footerTextSize);
     M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
     M5.Display.fillRect(0, footerY, M5.Display.width(), M5.Display.height() - footerY, TFT_WHITE);
-    M5.Display.setCursor(kPaddingX, footerY);
+    M5.Display.setCursor(_profile.margin(), footerY);
 
     if (_selection.pageCount() > 1)
     {
@@ -191,7 +188,7 @@ void Menu::render()
         M5.Display.println("");
     }
 
-    M5.Display.setCursor(kPaddingX, M5.Display.getCursorY());
+    M5.Display.setCursor(_profile.margin(), M5.Display.getCursorY());
     M5.Display.println(operationGuide().c_str());
 
     M5.Display.endWrite();

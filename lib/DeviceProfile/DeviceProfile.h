@@ -117,6 +117,19 @@ struct DeviceProfile
 
     bool isColor() const { return palette == DevicePalette::Color6; }
 
+    /**
+     * 画面の端に取る余白。
+     *
+     * 筐体のベゼルが画面の縁に掛かるため、端まで描くと文字が読めなくなる。
+     * 画面の大きさに対する割合で決める。固定値だと、幅の狭い機種
+     * （M5PaperColor は 400px）で相対的に足りなくなる。
+     */
+    int margin() const
+    {
+        int value = width / 25;
+        return (value < 8) ? 8 : value;
+    }
+
     /// ボタンで操作できるか
     bool hasButtons() const
     {

@@ -74,7 +74,8 @@ void drawHeader()
   }
   M5.Display.setTextSize(headerTextSize);
   M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
-  M5.Display.setCursor(0, 0);
+  // 端まで描くとベゼルに隠れる
+  M5.Display.setCursor(profile.margin(), profile.margin());
   M5.Display.printf("CardCase for %s\n", profile.name);
 }
 
@@ -84,7 +85,9 @@ void halt(const String &message)
   M5.Display.startWrite();
   M5.Display.fillScreen(TFT_WHITE);
   drawHeader();
-  M5.Display.println(message);
+  // 改行でカーソルが左端に戻るので、位置を指定し直す
+  M5.Display.setCursor(profile.margin(), M5.Display.getCursorY());
+  M5.Display.print(message);
   M5.Display.endWrite();
   M5.Display.waitDisplay();
 

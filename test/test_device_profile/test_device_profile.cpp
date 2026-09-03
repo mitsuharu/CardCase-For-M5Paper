@@ -112,6 +112,19 @@ void test_only_paper_color_has_slow_refresh()
     TEST_ASSERT_FALSE(profileFor(DeviceKind::PaperMono).slowRefresh);
 }
 
+void test_margin_scales_with_the_screen()
+{
+    // ベゼルに隠れないよう、画面の幅に対する割合で決める。
+    // 固定値だと幅の狭い機種で相対的に足りなくなる。
+    TEST_ASSERT_EQUAL_INT(21, profileFor(DeviceKind::M5Paper).margin());
+    TEST_ASSERT_EQUAL_INT(21, profileFor(DeviceKind::PaperS3).margin());
+    TEST_ASSERT_EQUAL_INT(19, profileFor(DeviceKind::PaperMono).margin());
+    TEST_ASSERT_EQUAL_INT(16, profileFor(DeviceKind::PaperColor).margin());
+
+    // 機種が分からない場合でも 0 にはしない
+    TEST_ASSERT_TRUE(profileFor(DeviceKind::Unknown).margin() >= 8);
+}
+
 void test_unknown_device_is_not_operable()
 {
     DeviceProfile profile = profileFor(DeviceKind::Unknown);
@@ -132,6 +145,7 @@ int runUnityTests(void)
     RUN_TEST(test_display_sizes);
     RUN_TEST(test_palette_and_optional_features);
     RUN_TEST(test_only_paper_color_has_slow_refresh);
+    RUN_TEST(test_margin_scales_with_the_screen);
     RUN_TEST(test_unknown_device_is_not_operable);
     return UNITY_END();
 }

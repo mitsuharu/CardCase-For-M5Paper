@@ -11,7 +11,6 @@
 
 namespace
 {
-    const int kPaddingX = 4;
     const byte kDnsPort = 53;
     const IPAddress kApAddress(192, 168, 4, 1);
     const IPAddress kApNetmask(255, 255, 255, 0);
@@ -452,25 +451,36 @@ namespace WebTransfer
             textSize = 2;
         }
 
+        int margin = profile.margin();
+
         M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
         M5.Display.setTextSize(textSize);
-        M5.Display.setCursor(kPaddingX, topY);
-        M5.Display.println("Scan to connect");
-        M5.Display.println("");
+        M5.Display.setCursor(margin, topY);
+        M5.Display.print("Scan to connect");
 
         // QR は画面の幅いっぱいに近い大きさにする。
         // 電子ペーパーは階調が粗いので、小さいと読み取りにくい。
         String payload = Credentials::wifiQrPayload(ssid, password);
-        int qrSize = M5.Display.width() - kPaddingX * 4;
-        int qrY = M5.Display.getCursorY();
+        int qrSize = M5.Display.width() - margin * 2;
+        int qrY = topY + textSize * 8 * 2;
         // バージョンは接続情報が収まる大きさにしている
-        M5.Display.qrcode(payload.c_str(), kPaddingX * 2, qrY, qrSize, 6);
+        M5.Display.qrcode(payload.c_str(), margin, qrY, qrSize, 6);
 
-        M5.Display.setCursor(kPaddingX, qrY + qrSize + textSize * 8);
-        M5.Display.printf("SSID: %s\n", ssid.c_str());
-        M5.Display.printf("PASS: %s\n", password.c_str());
-        M5.Display.println("");
-        M5.Display.println("http://192.168.4.1");
+        // LGFX は改行するとカーソルの X が 0 に戻るので、行ごとに位置を指定する。
+        // そうしないと 2 行目以降が画面の端に寄ってベゼルに隠れる。
+        int lineHeight = textSize * 8;
+        int y = qrY + qrSize + lineHeight;
+
+        M5.Display.setCursor(margin, y);
+        M5.Display.printf("SSID: %s", ssid.c_str());
+
+        y += lineHeight;
+        M5.Display.setCursor(margin, y);
+        M5.Display.printf("PASS: %s", password.c_str());
+
+        y += lineHeight * 2;
+        M5.Display.setCursor(margin, y);
+        M5.Display.print("http://192.168.4.1");
     }
 
     bool hasReceivedImage()
