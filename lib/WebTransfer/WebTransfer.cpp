@@ -16,7 +16,12 @@ namespace
     const IPAddress kApNetmask(255, 255, 255, 0);
 
     // 受け取った画像を置く名前。上書きしていくので SD が埋まらない。
-    const char *kReceivedPrefix = "/received";
+    // 一覧では [WiFi] から受け取ったものと分かるようにこの名前にしている
+    const char *kReceivedPrefix = "/WiFi";
+
+    // 送られてくる形式は PNG と JPEG のどちらもありうる。
+    // 拡張子が変わると別の名前になって両方残るので、まとめて消す。
+    const char *kReceivedExtensions[] = {".png", ".jpg", ".jpeg"};
 
     // SD が無いときは画像をメモリに持つ。
     //
@@ -85,6 +90,23 @@ namespace
     }
 
     /// 確保できるだけのバッファを取る
+    /// 前に受け取った画像を消す。拡張子が変わっても残らないようにする。
+    void removeReceived()
+    {
+        if (!Storage::isAvailable())
+        {
+            return;
+        }
+        for (size_t i = 0; i < sizeof(kReceivedExtensions) / sizeof(kReceivedExtensions[0]); i++)
+        {
+            String path = String(kReceivedPrefix) + kReceivedExtensions[i];
+            if (Storage::fs().exists(path))
+            {
+                Storage::fs().remove(path);
+            }
+        }
+    }
+
     bool allocateBuffer()
     {
         releaseBuffer();
@@ -118,10 +140,7 @@ namespace
             if (usingFile)
             {
                 String path = pathForUpload(upload.filename);
-                if (Storage::fs().exists(path))
-                {
-                    Storage::fs().remove(path);
-                }
+                removeReceived();
                 uploadFile = Storage::fs().open(path, FILE_WRITE);
                 if (!uploadFile)
                 {
@@ -284,7 +303,10 @@ function copyUrl() {
       + 'WiFi の接続画面として開かれているためです。<br>'
       + '<strong>写真ライブラリから選んでください。</strong>'
       + '撮った写真を送るときは、先にカメラアプリで撮影しておいてください。'
-      + MOBILE_HINT;
+      + '<br>ブラウザで <a href="' + URL_TEXT + '">' + URL_TEXT + '</a> を開いても使えます。'
+      + MOBILE_HINT
+      + '<br><button type="button" class="copy" id="copy">URL をコピー</button>';
+    document.getElementById('copy').addEventListener('click', copyUrl);
   } else {
     note.style.display = 'none';
   }

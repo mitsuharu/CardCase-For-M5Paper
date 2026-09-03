@@ -67,16 +67,31 @@ void showImage(const String &path)
 /// 画面幅に合わせた見出しを描く
 void drawHeader()
 {
-  int headerTextSize = profile.menuTextSize / 2;
-  if (headerTextSize < 2)
+  char title[48];
+  snprintf(title, sizeof(title), "CardCase for %s", profile.name);
+
+  // 折り返すと機種名が次の行にこぼれて読みにくいので、
+  // 幅に収まる最大のサイズを選ぶ。余白のぶん使える幅が減るため、
+  // 画面の大きさだけで決めると機種によって溢れる。
+  int available = M5.Display.width() - profile.margin() * 2;
+  int headerTextSize = 2;
+  for (int size = profile.menuTextSize / 2; size >= 2; size--)
   {
-    headerTextSize = 2;
+    M5.Display.setTextSize(size);
+    if (M5.Display.textWidth(title) <= available)
+    {
+      headerTextSize = size;
+      break;
+    }
   }
+
   M5.Display.setTextSize(headerTextSize);
   M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+  M5.Display.setTextWrap(false);
   // 端まで描くとベゼルに隠れる
   M5.Display.setCursor(profile.margin(), profile.margin());
-  M5.Display.printf("CardCase for %s\n", profile.name);
+  M5.Display.println(title);
+  M5.Display.setTextWrap(true);
 }
 
 /// 致命的なエラーを表示して停止する
@@ -246,7 +261,7 @@ void setup()
 
   // WiFi で受け取る導線を先頭に置く。
   // 画像が 1 枚も無くてもここから追加できるので、halt させない。
-  menu.addItem(MenuItemKind::Transfer, "[Receive by WiFi]", "");
+  menu.addItem(MenuItemKind::Transfer, "[WiFi]", "");
 
   if (!profile.isOperable())
   {
