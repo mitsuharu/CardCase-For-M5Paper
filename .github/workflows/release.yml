@@ -114,21 +114,20 @@ jobs:
         VERSION: ${{ steps.version.outputs.value }}
       run: |
         cat > notes.md <<'EOF'
-        ## 書き込み方法
+        ## インストール
 
-        `<機種>-merged.bin` はブートローダとパーティションを含んだ統合バイナリです。
-        offset を指定せずにそのまま書き込めます。
+        [インストーラのページ](https://mitsuharu.github.io/CardCase-For-M5Paper/) をパソコンの Chrome か Edge で開き、
+        本体を USB-C で繋いで、お使いの機種のボタンを押してください。何も用意せずに書き込めます。
+
+        コマンドで書き込む場合は `<機種>-merged.bin` を使います。
+        ブートローダとパーティションを含んでいるので、offset を指定せずそのまま書き込めます。
 
         ```bash
         esptool.py --chip esp32s3 --port /dev/tty.usbmodem1101 write_flash 0x0 M5PaperS3-merged.bin
         ```
 
         M5Paper v1.1 は ESP32 なので `--chip esp32` を指定してください。
-
-        `<機種>-firmware.bin` はアプリ部分だけのバイナリで、
-        すでに同じ構成で書き込んだことのある実機を更新する用途に使えます（offset は 0x10000）。
-
-        ## 対応機種
+        `<機種>-firmware.bin` はアプリ部分のみで、offset は 0x10000 です。
 
         | 機種 | ファイル |
         | --- | --- |
@@ -136,6 +135,7 @@ jobs:
         | M5PaperS3 | `M5PaperS3-merged.bin` |
         | M5PaperColor | `M5PaperColor-merged.bin` |
         | M5PaperMono | `M5PaperMono-merged.bin` |
+
         EOF
 
         PRERELEASE=""
@@ -143,9 +143,12 @@ jobs:
           PRERELEASE="--prerelease"
         fi
 
+        # --generate-notes で、前回のリリース以降にマージされた PR が列挙される。
+        # notes.md の内容はその上に置かれる。
         gh release create "$VERSION" \
           --title "$VERSION" \
           --notes-file notes.md \
+          --generate-notes \
           --target "${{ github.sha }}" \
           $PRERELEASE \
           dist/*.bin
@@ -184,8 +187,8 @@ jobs:
         VERSION: ${{ steps.version.outputs.value }}
       run: |
         mkdir -p _site
-        cp docs/index.html _site/
-        # manifest のバージョンを今回のリリースに差し替える
+        # ページと manifest のバージョンを今回のリリースに差し替える
+        sed "s/%VERSION%/$VERSION/g" docs/index.html > _site/index.html
         for manifest in docs/manifest-*.json; do
           sed "s/\"version\": \"0.0.0\"/\"version\": \"$VERSION\"/" "$manifest" > "_site/$(basename "$manifest")"
         done

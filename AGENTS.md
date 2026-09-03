@@ -132,6 +132,8 @@ PLATFORMIO_BUILD_FLAGS="-DARDUINO_USB_CDC_ON_BOOT=1 -DCORE_DEBUG_LEVEL=5" \
 - **タグ**を打つと走る。タグ名はバージョンそのもの（例: `1.2.3`）
 - Actions の画面から**手動実行**もできる（バージョンを入力する）
 
+リリースノートは `--generate-notes` で、前回のリリース以降にマージされた PR が自動で列挙される。書き込み方法の説明はその上に置かれる。
+
 成果物は機種ごとに 2 つ。
 
 - `<機種>-merged.bin` … ブートローダ・パーティション・boot_app0・アプリを 1 つにまとめたもの。`write_flash 0x0` だけで書き込める
@@ -141,7 +143,9 @@ PLATFORMIO_BUILD_FLAGS="-DARDUINO_USB_CDC_ON_BOOT=1 -DCORE_DEBUG_LEVEL=5" \
 
 ### ブラウザから書き込めるページ
 
-`docs/` に ESP Web Tools のページと機種ごとの manifest を置いてあり、リリース時に GitHub Pages へ公開する。ページと manifest はリポジトリで管理し、統合バイナリだけをその場のビルドから並べる。manifest の `version` は `0.0.0` を置いておき、公開時にリリースのバージョンへ差し替える。
+`docs/` に ESP Web Tools のページと機種ごとの manifest を置いてあり、リリース時に GitHub Pages へ公開する。ページと manifest はリポジトリで管理し、統合バイナリだけをその場のビルドから並べる。
+
+**バージョンは公開時に差し替える。** manifest は `version` に `0.0.0` を、ページは `%VERSION%` を置いておき、`release.yml` の `pages` ジョブで今回のリリースの値にする。ページ側は置き換わっていなければ非表示にするので、手元で開いてもプレースホルダは見えない。
 
 **機種は自動判別されない。** ESP Web Tools はチップを見て選ぶが、判別できるのは `chipFamily` 単位で、M5PaperS3 / M5PaperColor / M5PaperMono はいずれも ESP32-S3 になる。ページには機種ごとのボタンを並べ、取り違えないよう外観の違いを添えている。機種を追加したら `docs/index.html` にボタンを、`docs/` に manifest を足すこと。
 

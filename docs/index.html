@@ -16,6 +16,7 @@
   }
   h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
   .lead { color: #666; margin-top: 0; }
+  .version { color: #888; font-size: .85rem; margin: 0 0 1.5rem; }
   .note {
     border-left: 4px solid #d0a000;
     background: rgba(208, 160, 0, 0.08);
@@ -42,6 +43,7 @@
 
 <h1>CardCase インストーラ</h1>
 <p class="lead">M5Stack の電子ペーパー製品に、ブラウザから直接ファームウェアを書き込みます。</p>
+<p class="version" id="version">バージョン <strong>%VERSION%</strong> ・ <a href="https://github.com/mitsuharu/CardCase-For-M5Paper/releases/tag/%VERSION%">リリースノート</a></p>
 
 <div class="note">
   <strong>パソコンの Chrome または Edge で開いてください。</strong>
@@ -100,6 +102,14 @@
   <li>M5Paper v1.1 は USB シリアル変換（CH9102）を使うため、ドライバが必要な場合があります。</li>
   <li>書き込み後に画面が変わらない場合は、SD カードに画像が入っているか確認してください。</li>
 </ul>
+
+<script>
+  // 公開時に置き換わる。置き換わっていなければ（手元で開いた場合など）出さない。
+  (function () {
+    const el = document.getElementById('version');
+    if (el.textContent.indexOf('%') !== -1) { el.style.display = 'none'; }
+  })();
+</script>
 
 <footer>
   <a href="https://github.com/mitsuharu/CardCase-For-M5Paper">GitHub リポジトリ</a>
