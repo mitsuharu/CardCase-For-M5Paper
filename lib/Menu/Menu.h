@@ -59,7 +59,12 @@ private:
     int _footerTextSize = 2;
     bool _useCursor = false; // ボタン操作のカーソルを表示するか
 
+    // 更新の遅い機種で、選択が動いてから描き直すまでの猶予
+    bool _redrawPending = false;
+    unsigned long _redrawAt = 0;
+
     const char *operationGuide() const;
+    void requestRedraw(int previousIndex, int previousPage);
 
     void drawRow(int index);
     void confirm();

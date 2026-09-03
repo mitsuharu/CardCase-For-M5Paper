@@ -67,6 +67,16 @@ void test_palette_and_optional_features()
     TEST_ASSERT_FALSE(profileFor(DeviceKind::M5Paper).hasFrontlight);
 }
 
+void test_only_paper_color_has_slow_refresh()
+{
+    // M5PaperColor は部分更新が無く、1 回の更新に十数秒かかる
+    TEST_ASSERT_TRUE(profileFor(DeviceKind::PaperColor).slowRefresh);
+
+    TEST_ASSERT_FALSE(profileFor(DeviceKind::M5Paper).slowRefresh);
+    TEST_ASSERT_FALSE(profileFor(DeviceKind::PaperS3).slowRefresh);
+    TEST_ASSERT_FALSE(profileFor(DeviceKind::PaperMono).slowRefresh);
+}
+
 void test_unknown_device_is_not_operable()
 {
     DeviceProfile profile = profileFor(DeviceKind::Unknown);
@@ -83,6 +93,7 @@ int runUnityTests(void)
     RUN_TEST(test_paper_s3_has_touch_but_no_buttons);
     RUN_TEST(test_display_sizes);
     RUN_TEST(test_palette_and_optional_features);
+    RUN_TEST(test_only_paper_color_has_slow_refresh);
     RUN_TEST(test_unknown_device_is_not_operable);
     return UNITY_END();
 }

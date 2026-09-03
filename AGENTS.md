@@ -27,6 +27,8 @@ M5Stack の電子ペーパー製品向けのアプリ。SD カードに保存し
 
 - **M5PaperColor はタッチパネルを搭載していない**。物理ボタンだけで完結する操作を必ず用意する。UI を変更したら、この機種で操作できるかを最初に確認する。
 - **M5PaperColor は 1 画面のリフレッシュに 15〜30 秒かかる**。描画後にスリープや電源断を行う場合は `M5.Display.waitDisplay()` で完了を待つ。
+- **電子ペーパーは `endWrite()` のたびに画面を更新する**。M5GFX は `Panel_FrameBufferBase::init()` で `_auto_display` を有効にするため、`println()` や `fillRect()` の 1 回ごとに更新が走る。複数の描画は必ず `startWrite()` / `endWrite()` で囲んで 1 回にまとめること。とくに M5PaperColor のパネル（ED2208）は部分更新を持たず毎回全面を転送するので、行単位の描き直しでは速くならない。更新の「回数」を減らすことだけが効く
+- **`startWrite()` を SD アクセスをまたいで保持しない**。バスを共有する機種で競合しうる。進捗表示より、処理を終えてから 1 回で描くことを優先する
 - **M5PaperS3 は筐体上部にフックがある**。掛けると上下が逆になるため、画像だけ 180 度回転させて表示する。他機種は回転させない。
 - **M5PaperColor / M5PaperMono は OPI-PSRAM が必須**。`board_build.arduino.memory_type = qio_opi` が無いと M5GFX がディスプレイを初期化せず、画面が出ない。
 - **M5Paper v1.1 だけ ESP32**（他は ESP32-S3）。S3 前提のコードを書かない。

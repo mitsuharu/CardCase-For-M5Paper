@@ -37,6 +37,7 @@ DeviceProfile profileFor(DeviceKind kind)
         p.hasTouch = false; // タッチパネル非搭載。ボタンだけが操作手段になる
         p.buttonCount = 3;
         p.palette = DevicePalette::Color6;
+        p.slowRefresh = true; // 1 画面 15〜30 秒
         p.menuTextSize = 5;
         break;
 

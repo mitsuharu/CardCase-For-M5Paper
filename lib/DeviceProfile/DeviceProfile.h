@@ -71,6 +71,13 @@ struct DeviceProfile
     /// NFC リーダーの有無（M5PaperMono のみ）
     bool hasNfc = false;
 
+    /**
+     * 1 回の画面更新に十数秒かかる機種か（M5PaperColor）。
+     * この機種のパネルは部分更新を持たず、更新のたびに全面を転送するため、
+     * 描画をまとめるだけでなく、更新の回数そのものを減らす必要がある。
+     */
+    bool slowRefresh = false;
+
     /// 一覧のファイル名を描画するときの文字サイズ
     int menuTextSize = 8;
 
