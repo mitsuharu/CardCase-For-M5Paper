@@ -137,13 +137,22 @@ void startTransfer()
     halt("failed to start WiFi.");
   }
 
-  M5.Display.startWrite();
   M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
+  if (M5.Display.isEPD())
+  {
+    // QR は細かい模様なので、読み取れるようにしっかり出す。
+    // 速い波形だと前の画面が残り、模様に重なって読めなくなる。
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
+  }
+
+  // 見出しから QR までを 1 回の更新にまとめる
+  M5.Display.startWrite();
   M5.Display.fillScreen(TFT_WHITE);
   drawHeader();
-  M5.Display.endWrite();
-
   WebTransfer::render(profile, M5.Display.getCursorY());
+  M5.Display.endWrite();
+  M5.Display.waitDisplay();
+
   mode = Mode::Transferring;
 }
 

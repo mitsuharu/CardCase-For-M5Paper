@@ -44,7 +44,10 @@ namespace WebTransfer
     /// 受け取った画像を解放する
     void releaseReceivedImage();
 
-    /// 接続を待っている画面を描く
+    /**
+     * 接続を待っている画面を描く。
+     * 画面の更新は呼び出し側がまとめて行うので、ここでは描くだけにしている。
+     */
     void render(const DeviceProfile &profile, int topY);
 #endif
 }

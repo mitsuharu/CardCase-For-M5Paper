@@ -423,14 +423,6 @@ namespace WebTransfer
             textSize = 2;
         }
 
-        M5.Display.startWrite();
-
-        if (M5.Display.isEPD())
-        {
-            M5.Display.setEpdMode(epd_mode_t::epd_text);
-        }
-        M5.Display.fillRect(0, topY, M5.Display.width(), M5.Display.height() - topY, TFT_WHITE);
-
         M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
         M5.Display.setTextSize(textSize);
         M5.Display.setCursor(kPaddingX, topY);
@@ -450,9 +442,6 @@ namespace WebTransfer
         M5.Display.printf("PASS: %s\n", password.c_str());
         M5.Display.println("");
         M5.Display.println("http://192.168.4.1");
-
-        M5.Display.endWrite();
-        M5.Display.waitDisplay();
     }
 
     bool hasReceivedImage()
