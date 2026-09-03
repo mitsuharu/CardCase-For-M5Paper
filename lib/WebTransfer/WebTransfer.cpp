@@ -207,6 +207,9 @@ cursor:pointer;color:#1257a0;font-weight:600}
 .note{margin-top:1rem;padding:.75rem 1rem;background:#fff8e1;border-left:4px solid #d0a000;
 border-radius:0 4px 4px 0;font-size:.85rem;color:#555;line-height:1.6}
 .note code{background:#fff;padding:.1rem .3rem;border-radius:3px}
+.note a{color:#1257a0}
+button.copy{width:auto;margin-top:.6rem;padding:.4rem .8rem;font-size:.85rem;
+background:#fff;color:#1257a0;border:1px solid #1257a0}
 input[type=file]{display:none}
 canvas{max-width:100%;margin-top:1rem;border:1px solid #ddd;border-radius:6px;display:none}
 button{width:100%;margin-top:1rem;padding:.9rem;font-size:1rem;font-weight:600;color:#fff;
@@ -235,17 +238,41 @@ let name = 'image.png';
 
 function show(text, cls){ status.textContent = text; status.className = cls || ''; }
 
+const URL_TEXT = 'http://192.168.4.1';
+
+// クリップボードの API は https でないと使えないので、古いやり方を用意しておく
+function copyUrl() {
+  const button = document.getElementById('copy');
+  const area = document.createElement('textarea');
+  area.value = URL_TEXT;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(area);
+  button.textContent = ok ? 'コピーしました' : 'コピーできませんでした';
+}
+
 // この画面は WiFi の接続用に開かれた簡易ブラウザで、できることが限られる。
 // 制約は OS で違うので、環境に応じて案内を出し分ける。
 (function () {
   const note = document.getElementById('note');
   const ua = navigator.userAgent;
   if (/Android/i.test(ua)) {
-    // Android の接続画面はファイル選択に対応しておらず、押しても何も起きない
+    // Android の接続画面はファイル選択に対応しておらず、押しても何も起きない。
+    //
+    // この画面から外部のブラウザは開けない。専用アプリの WebView なので、
+    // リンクを押しても同じ画面の中で開くだけになる。intent:// で外に投げる
+    // 手もあるが、扱えない場合はエラー画面になって案内ごと消えてしまう。
+    // 代わりに URL をコピーできるようにして、貼り付けてもらう。
     note.innerHTML = 'この画面では<strong>画像を選べません</strong>。'
       + 'WiFi の接続画面として開かれているためです。<br>'
-      + 'この画面を閉じて、ブラウザで <code>http://192.168.4.1</code> を開いてください。'
-      + 'WiFi は繋いだままにしておいてください。';
+      + 'この画面を閉じて、ブラウザで <a href="' + URL_TEXT + '">' + URL_TEXT + '</a> を開いてください。'
+      + 'WiFi は繋いだままにしておいてください。'
+      + '<br><button type="button" class="copy" id="copy">URL をコピー</button>';
+    document.getElementById('copy').addEventListener('click', copyUrl);
   } else if (/iPhone|iPad|iPod/i.test(ua)) {
     // iOS の接続画面はカメラを起動できず、選ぶとシートごと閉じてしまう
     note.innerHTML = 'この画面で<strong>カメラは使えません</strong>。'
