@@ -184,8 +184,8 @@ jobs:
         VERSION: ${{ steps.version.outputs.value }}
       run: |
         mkdir -p _site
-        cp docs/index.html _site/
-        # manifest のバージョンを今回のリリースに差し替える
+        # ページと manifest のバージョンを今回のリリースに差し替える
+        sed "s/%VERSION%/$VERSION/g" docs/index.html > _site/index.html
         for manifest in docs/manifest-*.json; do
           sed "s/\"version\": \"0.0.0\"/\"version\": \"$VERSION\"/" "$manifest" > "_site/$(basename "$manifest")"
         done
