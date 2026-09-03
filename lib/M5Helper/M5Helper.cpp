@@ -2,8 +2,8 @@
 
 #ifdef ARDUINO
 
-#include <SD.h>
 #include <M5Unified.h>
+#include <Storage.h>
 #include <ExifOrientation.h>
 #include <ImageSize.h>
 #include <ImageRotation.h>
@@ -40,7 +40,7 @@ namespace
         // EXIF にサムネイルが入っていると SOF は数十 KB 先になるので広めに読む
         const size_t kHeaderSize = 64 * 1024;
 
-        File file = SD.open(path.c_str(), FILE_READ);
+        File file = Storage::fs().open(path.c_str(), FILE_READ);
         if (!file)
         {
             return static_cast<int>(profile.imageRotation);
@@ -110,14 +110,23 @@ void M5Helper::drawImageFromSD(const String &path, const DeviceProfile &profile)
 
     // 拡大率 0.0f を渡すと画面に収まる倍率が自動で計算される。
     // datum に middle_center を指定して余白を上下左右に均等に振る。
+    //
+    // ファイルは自分で開いて渡す。パスとファイルシステムを渡す API は
+    // 具体的な型（SDFS / SDMMCFS）に対するテンプレートなので、
+    // 機種ごとに違うファイルシステムを扱うこちらの作りには合わない。
     const float autoFit = 0.0f;
-    if (isJpeg)
+    File file = Storage::fs().open(path.c_str(), FILE_READ);
+    if (file)
     {
-        M5.Display.drawJpgFile(SD, path.c_str(), 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
-    }
-    else if (endsWithIgnoreCase(path, ".png"))
-    {
-        M5.Display.drawPngFile(SD, path.c_str(), 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
+        if (isJpeg)
+        {
+            M5.Display.drawJpg(&file, 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
+        }
+        else if (endsWithIgnoreCase(path, ".png"))
+        {
+            M5.Display.drawPng(&file, 0, 0, 0, 0, 0, 0, autoFit, autoFit, datum_t::middle_center);
+        }
+        file.close();
     }
 
     M5.Display.endWrite();

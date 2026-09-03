@@ -32,6 +32,8 @@ M5Stack の電子ペーパー製品向けのアプリ。SD カードに保存し
 - **M5PaperS3 は筐体上部にフックがある**。掛けると上下が逆になるため、画像だけ 180 度回転させて表示する。他機種は回転させない。
 - **M5PaperColor / M5PaperMono は OPI-PSRAM が必須**。`board_build.arduino.memory_type = qio_opi` が無いと M5GFX がディスプレイを初期化せず、画面が出ない。
 - **M5Paper v1.1 だけ ESP32**（他は ESP32-S3）。S3 前提のコードを書かない。
+- **M5PaperMono の microSD は 4bit の SDMMC 配線**（他機種は SPI）。M5Unified の `_pin_table_sd` で D1 / D2 が定義されているのがその機種にあたる。さらに **SD の各ラインに内部プルアップが要る**。Arduino の `SD_MMC` はスロットの `flags` を 0 のままにしていて内部プルアップを有効にしないため、そのままではカードが CMD に応答せず `send_op_cond` がタイムアウトする。`lib/Storage` がこの差分を吸収しているので、SD を直接触らずそちら経由で読むこと
+- **SD のピン番号を計算で作らない**。`M5.getPin()` から 1 本ずつ受け取る。「D1 は D0 の隣だろう」と導出すると、SPI の機種では D1 / D2 が未接続でその番号が別の用途（M5PaperS3 なら SCLK と MOSI、M5PaperColor なら EPD RST）に使われているため、無関係なピンを掴む。`test/test_sd_pins/` に 4 機種の実際のピンテーブルを置いて担保している
 - **同じ BtnA でも機種によって物理的な位置が違う**。M5Paper v1.1 はロータリスイッチの 上 / 押込 / 下 が BtnA / BtnB / BtnC に並ぶが、M5PaperColor は上下ボタンが BtnA / BtnB に隣り合い、3 つ目が BtnC になる。割り当ては `DeviceProfile` の `buttonA` / `buttonB` / `buttonC` に役割として持たせ、コード側でボタン名に意味を持たせない
 
 M5PaperColor / M5PaperMono は M5GFX 0.2.20 以降でないと `board_t` に定義が無く、機種として認識されない。ライブラリを下げないこと。
@@ -44,6 +46,8 @@ lib/
   DeviceProfile/ 機種差分の集約。新機種対応はまずここから
   ImageFile/     ファイル名の判定、EXIF と画像寸法の解析、表示する向きの決定
   Menu/          一覧の表示と選択。タッチと物理ボタンの両対応
+  Storage/       microSD へのアクセス。SPI と SDMMC の差を吸収する
+    SdPins/      配線の判定（純粋ロジック）
     Selection/   選択位置とページングの計算（純粋ロジック）
   M5Helper/      画像とテキストの描画
   Pressable/     タッチ領域
@@ -99,6 +103,19 @@ pio device monitor -e M5PaperS3
 ```
 
 `default_envs` は `M5PaperS3`。env を省略するとこれが対象になる。
+
+## 実機のログを見る
+
+画面に何も出ないなど、実機でしか分からない不具合はシリアルログが頼りになる。ログのフラグは `platformio.ini` に入れず、必要なときだけ環境変数で足す。
+
+```bash
+PLATFORMIO_BUILD_FLAGS="-DARDUINO_USB_CDC_ON_BOOT=1 -DCORE_DEBUG_LEVEL=5" \
+  pio run -e M5PaperMono -t upload
+```
+
+`ARDUINO_USB_CDC_ON_BOOT` が無いとネイティブ USB にシリアルが出ない。`CORE_DEBUG_LEVEL=5` にすると M5GFX の `[Autodetect]` や各ドライバの検出結果まで見える。機種判定が通っているか、パネルやタッチが見つかっているかがここで分かる。
+
+`pio device monitor` は TTY を要求するので、対話端末以外からは使えない。その場合は pyserial で直接読む。
 
 ## テスト
 

@@ -1,5 +1,5 @@
-#include <SD.h>
 #include <M5Unified.h>
+#include <Storage.h>
 #include <M5Helper.h>
 #include <DeviceProfile.h>
 #include <ImageFile.h>
@@ -14,25 +14,13 @@
 // M5PaperMono のフロントライトの明るさ（電池のため控えめにする）
 #define FRONTLIGHT_BRIGHTNESS 64
 
-// SD のマウントを何回まで試すか
-#define SD_MOUNT_RETRY_COUNT 3
-#define SD_MOUNT_RETRY_INTERVAL_MS 200
-
 DeviceProfile profile;
 Menu menu;
 
-/**
- * SD をアンマウントしてからディープスリープに入る。
- *
- * ディープスリープ中も SD カードには通電したままなので、読み出しの途中で寝ると
- * カードが中途半端な状態で残り、復帰後の SD.begin() が失敗する。
- * M5PaperS3 は M5GFX 側が SD を SPI モードに入れ直してくれない機種なので、
- * アプリ側で後始末する必要がある。
- */
+/// SD を後始末してからディープスリープに入る
 void enterDeepSleep()
 {
-  SD.end();
-  SPI.end();
+  Storage::end();
 
   // 電池のためスリープに入る。再び画像選択したい場合は電源ボタンを押す。
   M5.Log(esp_log_level_t::ESP_LOG_INFO, "Deep sleep start\n");
@@ -44,34 +32,6 @@ void onSelectImage(const MenuItem &item)
 {
   M5Helper::drawImageFromSD(item.value, profile);
   enterDeepSleep();
-}
-
-/// SD をマウントする。復帰直後は失敗することがあるのでやり直す。
-bool mountSD()
-{
-  auto mosi = M5.getPin(m5::pin_name_t::sd_spi_mosi);
-  auto miso = M5.getPin(m5::pin_name_t::sd_spi_miso);
-  auto sclk = M5.getPin(m5::pin_name_t::sd_spi_sclk);
-  auto cs = M5.getPin(m5::pin_name_t::sd_spi_cs);
-
-  for (int i = 0; i < SD_MOUNT_RETRY_COUNT; i++)
-  {
-    if (i > 0)
-    {
-      // 一度落としてから初期化し直す
-      SD.end();
-      SPI.end();
-      delay(SD_MOUNT_RETRY_INTERVAL_MS);
-      M5.Log(esp_log_level_t::ESP_LOG_INFO, "retry to mount SD card (%d)\n", i);
-    }
-
-    SPI.begin(sclk, miso, mosi);
-    if (SD.begin(cs, SPI, 4000000))
-    {
-      return true;
-    }
-  }
-  return false;
 }
 
 /// 画面幅に合わせた見出しを描く
@@ -107,7 +67,7 @@ void halt(const String &message)
 /// SD を走査して画像ファイルを一覧に積む
 bool collectImages()
 {
-  File root = SD.open("/");
+  File root = Storage::fs().open("/");
   if (!root)
   {
     return false;
@@ -166,7 +126,7 @@ void setup()
   // 電子ペーパーは endWrite のたびに画面を更新し、M5PaperColor では
   // 1 回あたり十数秒かかる。進捗を逐一表示すると起動が数分になるので、
   // SD の処理を先に終わらせてから、画面は最後に 1 回だけ描く。
-  if (!mountSD())
+  if (!Storage::begin())
   {
     halt("mount SD card .. NG");
   }
