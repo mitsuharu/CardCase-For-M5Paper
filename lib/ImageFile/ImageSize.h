@@ -19,11 +19,18 @@ namespace ImageFile
      */
     bool imageSize(const uint8_t *data, size_t size, int *width, int *height);
 
+    /// 向きを揃えるときに回す向き（反時計回りに 90 度 = 時計回りに 3 回）
+    const int kFitRotationSteps = 3;
+
     /**
-     * 画像と画面の向きが食い違っているときに、追加で回す回数（0 か 1）を返す。
+     * 画像と画面の向きが食い違っているときに、追加で回す回数を返す。
+     * 揃っている場合は 0、食い違っている場合は kFitRotationSteps。
      *
      * カメラの横長写真を縦長の画面にそのまま出すと、細い帯になって余白ばかりになる。
      * 向きを揃えると画面いっぱいに表示できる。
+     *
+     * EXIF による回転と違ってどちら向きに回しても収まるが、
+     * 本体を反時計回りに傾けて見る向き（反時計回り）に合わせている。
      */
     int orientationFitSteps(int imageWidth, int imageHeight, int screenWidth, int screenHeight);
 }

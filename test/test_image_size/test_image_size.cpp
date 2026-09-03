@@ -109,15 +109,15 @@ void test_returns_false_for_broken_input()
 
 void test_fit_steps_rotates_when_orientation_differs()
 {
-    // 横長の写真を縦長の画面に出すときは 90 度回す
-    TEST_ASSERT_EQUAL_INT(1, ImageFile::orientationFitSteps(4032, 3024, 540, 960));
+    // 横長の写真を縦長の画面に出すときは反時計回りに 90 度回す
+    TEST_ASSERT_EQUAL_INT(3, ImageFile::orientationFitSteps(4032, 3024, 540, 960));
 
     // 縦長の写真を縦長の画面に出すときはそのまま
     TEST_ASSERT_EQUAL_INT(0, ImageFile::orientationFitSteps(3024, 4032, 540, 960));
 
     // 画面がすでに横向きなら、横長の写真はそのまま
     TEST_ASSERT_EQUAL_INT(0, ImageFile::orientationFitSteps(4032, 3024, 960, 540));
-    TEST_ASSERT_EQUAL_INT(1, ImageFile::orientationFitSteps(3024, 4032, 960, 540));
+    TEST_ASSERT_EQUAL_INT(3, ImageFile::orientationFitSteps(3024, 4032, 960, 540));
 }
 
 void test_fit_steps_keeps_square_and_matching_images()

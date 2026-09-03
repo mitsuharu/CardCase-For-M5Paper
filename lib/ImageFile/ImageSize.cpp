@@ -130,6 +130,6 @@ namespace ImageFile
         bool imageIsLandscape = imageWidth > imageHeight;
         bool screenIsLandscape = screenWidth > screenHeight;
 
-        return (imageIsLandscape == screenIsLandscape) ? 0 : 1;
+        return (imageIsLandscape == screenIsLandscape) ? 0 : kFitRotationSteps;
     }
 }
