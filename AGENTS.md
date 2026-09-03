@@ -135,6 +135,14 @@ PLATFORMIO_BUILD_FLAGS="-DARDUINO_USB_CDC_ON_BOOT=1 -DCORE_DEBUG_LEVEL=5" \
 
 **M5Paper v1.1 だけブートローダの位置が 0x1000**（他は 0x0）。ESP32 と ESP32-S3 の違いなので、機種を追加するときは `release.yml` の matrix に chip と bootloader_offset を書くこと。
 
+### ブラウザから書き込めるページ
+
+`docs/` に ESP Web Tools のページと機種ごとの manifest を置いてあり、リリース時に GitHub Pages へ公開する。ページと manifest はリポジトリで管理し、統合バイナリだけをその場のビルドから並べる。manifest の `version` は `0.0.0` を置いておき、公開時にリリースのバージョンへ差し替える。
+
+**機種は自動判別されない。** ESP Web Tools はチップを見て選ぶが、判別できるのは `chipFamily` 単位で、M5PaperS3 / M5PaperColor / M5PaperMono はいずれも ESP32-S3 になる。ページには機種ごとのボタンを並べ、取り違えないよう外観の違いを添えている。機種を追加したら `docs/index.html` にボタンを、`docs/` に manifest を足すこと。
+
+Web Serial を使うのでパソコンの Chrome / Edge 専用。iOS は非対応、Android も未実装。
+
 ### Actions の指定はコミットハッシュで固定する
 
 `uses:` はタグではなくコミットハッシュで指定し、読めるようにバージョンをコメントで添える。タグは付け替えられるため、供給元が変わると気付けない。

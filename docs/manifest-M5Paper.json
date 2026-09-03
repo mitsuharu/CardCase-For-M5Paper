@@ -1,0 +1,13 @@
+{
+  "name": "CardCase for M5Paper v1.1",
+  "version": "0.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "M5Paper-merged.bin", "offset": 0 }
+      ]
+    }
+  ]
+}
