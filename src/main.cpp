@@ -1,43 +1,78 @@
 #include <SD.h>
 #include <M5Unified.h>
 #include <M5Helper.h>
-#include <Pressable.h>
+#include <DeviceProfile.h>
+#include <ImageFile.h>
+#include <Menu.h>
 
-// フォントサイズの定義
-#define FONT_SIZE_SPACER 2
-#define FONT_SIZE_REGULAR 4
-#define FONT_SIZE_FILE 8
+// M5Unified が機種を自動判定できなかったときの保険。
+// platformio.ini の env ごとに -DCARDCASE_FALLBACK_BOARD で指定する。
+#ifndef CARDCASE_FALLBACK_BOARD
+#define CARDCASE_FALLBACK_BOARD board_unknown
+#endif
 
-// 対応する画像ファイル数（ファイル名の表示エリアと描画に時間がかかるので、大きな値は設定しない）
-#define MAX_IMAGES 10
+// M5PaperMono のフロントライトの明るさ（電池のため控えめにする）
+#define FRONTLIGHT_BRIGHTNESS 64
 
-// ボタン群
-int buttonCount = 0;
-Pressable buttonList[MAX_IMAGES];
+DeviceProfile profile;
+Menu menu;
 
-// ボタンイベント
-void onPress(Pressable &button)
+/// 一覧で選ばれたときに全画面表示してスリープに入る
+void onSelectImage(const MenuItem &item)
 {
-  int index = button.tag;
-  String path = button.userInfo;
-  if (0 <= index && index < buttonCount)
+  M5Helper::drawImageFromSD(item.value, profile, true);
+}
+
+/// 致命的なエラーを表示して停止する
+void halt(const String &message)
+{
+  M5.Display.println(message);
+  M5.Display.waitDisplay();
+  while (1)
   {
-    M5Helper::drawImageFromSD(path, M5Helper::Rotation::Down, true);
+    delay(1000);
   }
 }
 
 void setup()
 {
   auto cfg = M5.config();
+  cfg.fallback_board = m5::board_t::CARDCASE_FALLBACK_BOARD;
   M5.begin(cfg);
+
+  profile = currentProfile();
 
   // スリープから起きる。実機の電源ボタンを押してください。
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   M5.Log(esp_log_level_t::ESP_LOG_INFO, "Wakeup reason: %d\n", wakeup_reason);
+  M5.Log(esp_log_level_t::ESP_LOG_INFO, "Board: %s\n", profile.name);
 
-  M5.Lcd.setEpdMode(epd_mode_t::epd_fastest);
-  M5.Display.setTextSize(FONT_SIZE_REGULAR);
-  M5.Display.println("CardCase For M5PaperS3");
+  if (profile.hasFrontlight)
+  {
+    M5.Display.setBrightness(FRONTLIGHT_BRIGHTNESS);
+  }
+
+  M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
+  if (M5.Display.isEPD())
+  {
+    M5.Display.setEpdMode(epd_mode_t::epd_fastest);
+  }
+  M5.Display.fillScreen(TFT_WHITE);
+  M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+
+  // 画面幅に合わせた見出しの文字サイズ
+  int headerTextSize = profile.menuTextSize / 2;
+  if (headerTextSize < 2)
+  {
+    headerTextSize = 2;
+  }
+  M5.Display.setTextSize(headerTextSize);
+  M5.Display.printf("CardCase for %s\n", profile.name);
+
+  if (profile.kind == DeviceKind::Unknown)
+  {
+    halt("unsupported board.");
+  }
 
   // Get SPI pins
   auto mosi = M5.getPin(m5::pin_name_t::sd_spi_mosi);
@@ -49,51 +84,29 @@ void setup()
   SPI.begin(sclk, miso, mosi);
   if (!SD.begin(cs, SPI, 4000000))
   {
-    M5.Display.println("mount SD card .. NG");
-    while (1)
-      ;
+    halt("mount SD card .. NG");
   }
-  else
-  {
-    M5.Display.println("mount SD card .. OK");
-  }
+  M5.Display.println("mount SD card .. OK");
 
   // SD のルートディレクトリを開く
   File root = SD.open("/");
   if (!root)
   {
-    M5.Display.println("failed to open SD card");
-    while (1)
-      ;
-  }
-  else
-  {
-    M5.Display.setTextSize(FONT_SIZE_SPACER);
-    M5.Display.println("");
+    halt("failed to open SD card");
   }
 
   // SD を走査して画像ファイルをリストアップ
   File file = root.openNextFile();
-  while (file && buttonCount < MAX_IMAGES)
+  while (file)
   {
     if (!file.isDirectory())
     {
       String filename = file.name();
-      if (!filename.startsWith(".") && (filename.endsWith(".jpg") || filename.endsWith(".jpeg") || filename.endsWith(".png")))
+      if (ImageFile::isListable(filename) && !menu.addItem(filename, ImageFile::rootPath(filename)))
       {
-        String path = String("/") + filename;
-        String text = String(filename);
-
-        Pressable button = Pressable();
-        button.tag = buttonCount;
-        button.userInfo = path;
-        button.show(text, onPress);
-
-        buttonList[buttonCount] = button;
-        buttonCount++;
-
-        M5.Display.setTextSize(FONT_SIZE_SPACER);
-        M5.Display.println("");
+        // 一覧の上限に達した
+        file.close();
+        break;
       }
     }
     file.close();
@@ -101,26 +114,25 @@ void setup()
   }
   root.close();
 
-  // 読込み完了
-  M5.Display.setTextSize(FONT_SIZE_REGULAR);
-  if (buttonCount > 0)
+  if (menu.itemCount() == 0)
   {
-    M5.Display.println("Touch file name!");
+    halt("It does not found images.");
   }
-  else
+
+  if (!profile.isOperable())
   {
-    M5.Display.println("It does not found images.");
-    while (1)
-      ;
+    // タッチもボタンも無い＝機種判定かビルド設定が誤っている
+    halt("no input available.");
   }
+
+  // 見出しの下から一覧を並べる
+  M5.Display.println("");
+  menu.begin(profile, M5.Display.getCursorY(), onSelectImage);
 }
 
 void loop()
 {
   M5.update();
-
-  for (Pressable button : buttonList)
-  {
-    button.loop();
-  }
+  menu.update();
+  delay(10);
 }
