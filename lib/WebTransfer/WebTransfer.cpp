@@ -219,12 +219,7 @@ button:disabled{background:#9bb4cc}
 <p class="lead">選んだ画像を電子ペーパーに表示します。</p>
 <label class="pick" for="file">画像を選ぶ</label>
 <input type="file" id="file" accept="image/*">
-<p class="note">
-この画面で<strong>カメラは使えません</strong>。WiFi の接続画面として開かれているためで、
-カメラを選ぶと画面が閉じてしまいます。<br>
-<strong>写真ライブラリから選んでください。</strong>
-撮った写真を送りたいときは、先にカメラアプリで撮影しておいてください。
-</p>
+<p class="note" id="note"></p>
 <canvas id="preview"></canvas>
 <button id="send" disabled>送信</button>
 <div id="status"></div>
@@ -239,6 +234,28 @@ let blob = null;
 let name = 'image.png';
 
 function show(text, cls){ status.textContent = text; status.className = cls || ''; }
+
+// この画面は WiFi の接続用に開かれた簡易ブラウザで、できることが限られる。
+// 制約は OS で違うので、環境に応じて案内を出し分ける。
+(function () {
+  const note = document.getElementById('note');
+  const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) {
+    // Android の接続画面はファイル選択に対応しておらず、押しても何も起きない
+    note.innerHTML = 'この画面では<strong>画像を選べません</strong>。'
+      + 'WiFi の接続画面として開かれているためです。<br>'
+      + 'この画面を閉じて、ブラウザで <code>http://192.168.4.1</code> を開いてください。'
+      + 'WiFi は繋いだままにしておいてください。';
+  } else if (/iPhone|iPad|iPod/i.test(ua)) {
+    // iOS の接続画面はカメラを起動できず、選ぶとシートごと閉じてしまう
+    note.innerHTML = 'この画面で<strong>カメラは使えません</strong>。'
+      + 'WiFi の接続画面として開かれているためです。<br>'
+      + '<strong>写真ライブラリから選んでください。</strong>'
+      + '撮った写真を送るときは、先にカメラアプリで撮影しておいてください。';
+  } else {
+    note.style.display = 'none';
+  }
+})();
 function toBlob(type, q){ return new Promise(r => preview.toBlob(r, type, q)); }
 
 // カメラで撮った写真は 1200 万画素になることもある。
