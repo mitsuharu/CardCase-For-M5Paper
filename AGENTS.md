@@ -132,6 +132,22 @@ PLATFORMIO_BUILD_FLAGS="-DARDUINO_USB_CDC_ON_BOOT=1 -DCORE_DEBUG_LEVEL=5" \
 - **タグ**を打つと走る。タグ名はバージョンそのもの（例: `1.2.3`）
 - Actions の画面から**手動実行**もできる（バージョンを入力する）
 
+### Pages はタグからのデプロイを許しておく
+
+`github-pages` 環境は、既定でデプロイ元を既定ブランチに限る。タグを打つと `pages` だけが
+`Tag "0.0.5" is not allowed to deploy to github-pages due to environment protection rules.`
+で落ちる。**Release は作られるのにインストーラのページだけ古いまま**という、気づきにくい形になる。
+
+fork した場合は引き継がれないので、一度だけ入れる。
+
+```bash
+gh api --method POST repos/<owner>/<repo>/environments/github-pages/deployment-branch-policies \
+  -f name='*.*.*' -f type=tag
+```
+
+許可の書式は `*` しか使えず、数字だけに絞れない。`app-1.0.0` にも当たるが、App Release は
+Pages を触らないので実害はない。
+
 リリースノートは `--generate-notes` で、前回のリリース以降にマージされた PR が自動で列挙される。書き込み方法の説明はその上に置かれる。
 
 成果物は機種ごとに 2 つ。
