@@ -94,8 +94,14 @@ async function deviceChunkLimit(): Promise<number> {
 /** 本体の能力を尋ねる */
 async function hello(): Promise<DeviceInfo> {
   const response = await send(Command.Hello, []);
-  if (responseStatus(response) !== Status.Ok) {
-    throw new NfcError(`本体が応答しません (${statusName(responseStatus(response))})`);
+  const status = responseStatus(response);
+
+  if (status === Status.NotReady) {
+    // 本体は待ち受けているが、受け取る画面になっていない
+    throw new NfcError('本体で [NFC] を選んでから送ってください');
+  }
+  if (status !== Status.Ok) {
+    throw new NfcError(`本体が応答しません (${statusName(status)})`);
   }
   return {
     maxChunkSize: readU16(response, 5),
@@ -237,8 +243,8 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
         }
         lastError = e;
 
-        // 相手が違う、大きすぎるなど、繋ぎ直しても直らないものは即やめる
-        if (e instanceof NfcError && sent === 0 && attempt > 0) {
+        // 相手が違う、受け取る画面でないなど、繋ぎ直しても直らないものは即やめる
+        if (e instanceof NfcError && sent === 0) {
           throw e;
         }
 

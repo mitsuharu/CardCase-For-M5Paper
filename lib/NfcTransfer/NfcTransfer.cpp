@@ -46,8 +46,10 @@ namespace
     uint8_t *buffer = nullptr;
     uint8_t response[NfcProtocol::kMaxFrameSize];
 
-    bool ready = false;
+    bool registered = false;
     bool listening = false;
+    bool loggedFirstFrame = false;
+    bool accepting = false;
     String receivedPath;
 
     /**
@@ -117,6 +119,32 @@ namespace
 
         State receive_callback(const uint8_t *rx, const uint32_t rx_len) override
         {
+            // 毎回出すと往復が増えて遅くなるので、待ち受けを始めてから最初の 1 回だけ
+            if (!loggedFirstFrame)
+            {
+                loggedFirstFrame = true;
+                M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: first rx len=%u %02X %02X %02X %02X\n",
+                       (unsigned)rx_len,
+                       rx_len > 0 ? rx[0] : 0, rx_len > 1 ? rx[1] : 0,
+                       rx_len > 2 ? rx[2] : 0, rx_len > 3 ? rx[3] : 0);
+            }
+
+            // 受け取る画面でないときは断る。黙って落とすと、送る側からは
+            // 届いていないのか拒まれたのか分からない。
+            if (!accepting)
+            {
+                NfcProtocol::Request parsed;
+                if (!NfcProtocol::parseRequest(rx, rx_len, parsed))
+                {
+                    return EmulationLayerA::receive_callback(rx, rx_len);
+                }
+                size_t refused = NfcProtocol::buildResponse(parsed.command, NfcProtocol::StatusNotReady,
+                                                            nullptr, 0, response, sizeof(response));
+                return _unit.nfcaEmulationTransmit(response, static_cast<uint16_t>(refused))
+                           ? State::Active
+                           : State::Idle;
+            }
+
             size_t length = session.handle(rx, rx_len, response, sizeof(response));
             if (length == 0)
             {
@@ -135,13 +163,6 @@ namespace
     };
 
     Emulation *emulation = nullptr;
-
-    /**
-     * NFC の電源を入れ直す。
-     *
-     * IO エキスパンダは本体を再起動しても状態が残るので、単に HIGH を書くだけでは
-     * 前回の中途半端な設定のままになることがある。一度 LOW に落としてから上げる。
-     */
     void resetNfcPower()
     {
         auto &ioe = M5.getIOExpander(0);
@@ -150,7 +171,43 @@ namespace
         ioe.digitalWrite(kNfcEnablePin, false);
         delay(20);
         ioe.digitalWrite(kNfcEnablePin, true);
-        delay(100);
+        delay(120);
+    }
+
+
+    /**
+     * 2 回目以降、受け身の状態へ戻す。
+     *
+     * emulation->end() だけでは受信の経路が戻らず、タグとして選ばれても
+     * フレームが 1 つも届かない。電源から入れ直し、エミュレーションの設定と
+     * フィールド検出のしきい値を入れ直す必要がある。
+     *
+     * 初回は units.begin() が適切な値を入れるので、ここは通さない。
+     * 初回にも通すと逆に動かなくなる。
+     */
+    bool rearmChip()
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            resetNfcPower();
+
+            if (!unit.begin())
+            {
+                continue;
+            }
+            if (!unit.configureEmulationMode(m5::nfc::NFC::A))
+            {
+                continue;
+            }
+            // 近づいた・離れたを判断する境目
+            if (!unit.writeExternalFieldDetectorActivationThreshold(0x11) ||
+                !unit.writeExternalFieldDetectorDeactivationThreshold(0x00))
+            {
+                continue;
+            }
+            return true;
+        }
+        return false;
     }
 }
 
@@ -174,43 +231,53 @@ namespace NfcTransfer
         }
         session.begin(buffer, kBufferSize, profile.width, profile.height);
 
-        resetNfcPower();
-
-        auto config = unit.config();
-        config.emulation = true;
-        config.mode = m5::nfc::NFC::A;
-        // 割り込みを使わず register を読みに行く。
-        // 受け身の状態へ移るときに割り込みの端子に頼ると取りこぼすため。
-        config.using_irq = false;
-        unit.config(config);
-
-        if (!ready)
+        if (!registered)
         {
+            // 初回だけ電源を入れて初期化する。
+            // IO エキスパンダは本体を再起動しても状態が残るので、
+            // 単に HIGH を書くだけでは前回の中途半端な設定のままになる。
+            resetNfcPower();
+
+            auto config = unit.config();
+            config.emulation = true;
+            config.mode = m5::nfc::NFC::A;
+            // 割り込みを使わず register を読みに行く。
+            // 受け身の状態へ移るときに割り込みの端子に頼ると取りこぼすため。
+            config.using_irq = false;
+            unit.config(config);
+
             if (!m5::unit::wiring::i2cClass(units, unit, M5.In_I2C))
             {
                 M5.Log(esp_log_level_t::ESP_LOG_ERROR, "nfc: cannot add unit\n");
                 return false;
             }
-            ready = units.begin();
-        }
-        else
-        {
-            ready = unit.begin();
+            registered = true;
+
+            if (!units.begin())
+            {
+                uint8_t type = 0;
+                uint8_t revision = 0;
+                bool identity = unit.readICIdentity(type, revision);
+                M5.Log(esp_log_level_t::ESP_LOG_ERROR, "nfc: begin failed identity=%d type=%02X rev=%02X\n",
+                       identity ? 1 : 0, type, revision);
+                return false;
+            }
         }
 
-        if (!ready)
-        {
-            uint8_t type = 0;
-            uint8_t revision = 0;
-            bool identity = unit.readICIdentity(type, revision);
-            M5.Log(esp_log_level_t::ESP_LOG_ERROR, "nfc: begin failed identity=%d type=%02X rev=%02X\n",
-                   identity ? 1 : 0, type, revision);
-            return false;
-        }
-
+        bool rearmed = false;
         if (emulation == nullptr)
         {
             emulation = new Emulation(unit);
+        }
+        else
+        {
+            // 2 回目以降。前回の停止で受信の経路が落ちているので入れ直す。
+            rearmed = rearmChip();
+            if (!rearmed)
+            {
+                M5.Log(esp_log_level_t::ESP_LOG_ERROR, "nfc: rearm failed\n");
+                return false;
+            }
         }
 
         // UID は MAC から作る。同じ本体なら毎回同じになるので、
@@ -235,15 +302,31 @@ namespace NfcTransfer
             return false;
         }
 
+        loggedFirstFrame = false;
+        M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: begin state=%d rearmed=%d\n",
+               (int)emulation->state(), rearmed ? 1 : 0);
+
         listening = emulation->begin(picc, piccMemory, sizeof(piccMemory));
         if (!listening)
         {
-            M5.Log(esp_log_level_t::ESP_LOG_ERROR, "nfc: emulation begin failed\n");
+            M5.Log(esp_log_level_t::ESP_LOG_ERROR, "nfc: emulation begin failed state=%d\n",
+                   (int)emulation->state());
             return false;
         }
 
         M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: listening\n");
         return true;
+    }
+
+    void setAccepting(bool value)
+    {
+        accepting = value;
+        if (!value)
+        {
+            // 途中まで受け取っていたものは捨てる
+            session.reset();
+            receivedPath = "";
+        }
     }
 
     void update()
@@ -260,13 +343,20 @@ namespace NfcTransfer
     {
         if (emulation != nullptr && listening)
         {
-            emulation->end();
+            int before = (int)emulation->state();
+            bool ended = emulation->end();
+            M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: end state=%d ended=%d after=%d\n",
+                   before, ended ? 1 : 0, (int)emulation->state());
         }
         listening = false;
 
-        // 電波を止めて電池を使わないようにする
-        auto &ioe = M5.getIOExpander(0);
-        ioe.digitalWrite(kNfcEnablePin, false);
+        // 電源は落とさない。
+        //
+        // 落とすとエミュレーションの設定もフィールド検出のしきい値も消える。
+        // 入れ直しても受け身の状態に戻り切らず、2 回目以降は電波を
+        // 検出しても IDLE と OFF を往復するだけでタグとして選ばれなかった。
+        // 画像を表示したあとはディープスリープに入って電源ごと切れるので、
+        // 起きている間だけ通電したままにしておく。
     }
 
     bool hasReceivedImage()

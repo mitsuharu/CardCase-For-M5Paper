@@ -24,6 +24,14 @@ namespace NfcTransfer
     /// loop() から呼ぶ
     void update();
 
+    /**
+     * 画像を受け取るかどうか。
+     *
+     * 待ち受けは止められない（止めると次から届かなくなる）ので、
+     * 受け取りたくない画面では断るようにする。
+     */
+    void setAccepting(bool accepting);
+
     /// 停止して電波を止める
     void end();
 

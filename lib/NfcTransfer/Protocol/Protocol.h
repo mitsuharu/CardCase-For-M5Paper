@@ -61,6 +61,7 @@ namespace NfcProtocol
         StatusNoTransfer = 0x13,  // その転送を知らない
         StatusCrcMismatch = 0x14, // 中身が壊れている
         StatusIncomplete = 0x15,  // まだ全部届いていない
+        StatusNotReady = 0x16,    // 受け取る画面になっていない
     };
 
     /// 受け取ったフレームを読み解いた結果

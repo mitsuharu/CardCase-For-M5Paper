@@ -41,6 +41,7 @@ export const Status = {
   NoTransfer: 0x13,
   CrcMismatch: 0x14,
   Incomplete: 0x15,
+  NotReady: 0x16,
 } as const;
 
 export function statusName(status: number): string {
@@ -53,6 +54,7 @@ export function statusName(status: number): string {
     [Status.NoTransfer]: 'NO_TRANSFER',
     [Status.CrcMismatch]: 'CRC_MISMATCH',
     [Status.Incomplete]: 'INCOMPLETE',
+    [Status.NotReady]: 'NOT_READY',
   };
   return names[status] ?? `UNKNOWN(0x${status.toString(16)})`;
 }
