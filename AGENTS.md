@@ -330,6 +330,12 @@ Android の APK は GitHub Release にも置く。誰でも入れられるので
 
 iOS の Ad Hoc は登録済みの端末にしか入らない。**端末を増やしたら `eas device:create` で登録してから焼き直す。**配布済みの ipa に後から端末は足せない。
 
+### EAS の依存キャッシュは package-lock.json で決まる
+
+`package-lock.json` を触ったビルドは、依存を入れ直すところからやり直す。触らなければキャッシュが効く。iOS で **10.9 分が 3.1 分**になった。
+
+依存を足し引きした直後のビルドが遅いのはこのため。焦らなくてよい。
+
 ### APK は実機で使う ABI だけ入れる
 
 既定では 4 つの ABI（`armeabi-v7a` / `arm64-v8a` / `x86` / `x86_64`）が全部入り、APK が 67MB になる。**うち約 31MB は x86 系で、実機では一切使われない。**エミュレータ用しかない。
@@ -337,8 +343,10 @@ iOS の Ad Hoc は登録済みの端末にしか入らない。**端末を増や
 `eas.json` の `env` で Gradle のプロパティを上書きして、実機で使う 2 つに絞っている。
 
 ```json
-"env": { "ORG_GRADLE_PROJECT_reactNativeArchitectures": "armeabi-v7a,arm64-v8a" }
+"android": { "env": { "ORG_GRADLE_PROJECT_reactNativeArchitectures": "armeabi-v7a,arm64-v8a" } }
 ```
+
+**`android` の下に置く。**プロファイル直下だと iOS のビルドにも渡る。iOS に Gradle は無いので実害は無いが、環境変数はキャッシュの鍵に絡むことがある。
 
 ABI ごとに **分割はしない**。APK が複数になると、取得も DeployGate も Release も 1 ファイル前提の作りを直すことになり、入れる人が自分の端末に合うものを選ぶ手間も増える。絞るだけで足りる。
 
