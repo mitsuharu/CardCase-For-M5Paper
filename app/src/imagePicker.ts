@@ -46,16 +46,9 @@ export async function prepareImage(
     .resize({ width, height })
     .renderAsync();
 
-  // 送る量は品質だけで調整する。本体は白黒 4 階調しか出せないので、
-  // 品質を落としても見た目にはほとんど響かない。
-  const qualities = [0.7, 0.5, 0.35, 0.25, 0.15, 0.05];
   let smallest: PreparedImage | null = null;
 
-  for (const quality of qualities) {
-    const saved = await rendered.saveAsync({
-      compress: quality,
-      format: ImageManipulator.SaveFormat.JPEG,
-    });
+  const measure = async (saved: { uri: string; width: number; height: number }) => {
     const bytes = await new File(saved.uri).bytes();
     const candidate: PreparedImage = {
       bytes,
@@ -63,12 +56,34 @@ export async function prepareImage(
       width: saved.width,
       height: saved.height,
     };
-
-    if (bytes.length <= maxBytes) {
-      return candidate;
-    }
     if (!smallest || bytes.length < smallest.bytes.length) {
       smallest = candidate;
+    }
+    return candidate;
+  };
+
+  // まず PNG を試す。文字や図の画像は JPEG より小さくなる上に劣化しない。
+  // 名刺のような画像が主な用途なので、収まるならこちらを使う。
+  const png = await measure(
+    await rendered.saveAsync({ format: ImageManipulator.SaveFormat.PNG }),
+  );
+  if (png.bytes.length <= maxBytes) {
+    return png;
+  }
+
+  // 収まらないのは写真のような画像。ここからは品質だけで調整する。
+  // 本体は白黒 4 階調しか出せないので、品質を落としても見た目には響かない。
+  const qualities = [0.7, 0.5, 0.35, 0.25, 0.15, 0.05];
+
+  for (const quality of qualities) {
+    const candidate = await measure(
+      await rendered.saveAsync({
+        compress: quality,
+        format: ImageManipulator.SaveFormat.JPEG,
+      }),
+    );
+    if (candidate.bytes.length <= maxBytes) {
+      return candidate;
     }
   }
 
