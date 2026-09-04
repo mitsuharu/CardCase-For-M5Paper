@@ -67,10 +67,10 @@ async function hello(): Promise<DeviceInfo> {
 }
 
 /**
- * 画像を送る。
+ * 1 回のかざしで送れるところまで送る。
  *
- * NFC は端末を離すと切れるので、そのときは同じ内容で始め直せば
- * 受け取り済みの位置から続けられる。本体側がその位置を返してくる。
+ * 送り切れたら true、まだ残っているなら false を返す。
+ * 電波が切れた場合は例外が飛ぶので、呼び出し側でかざし直してもらう。
  */
 async function transfer(image: Uint8Array, onProgress: (p: Progress) => void): Promise<void> {
   const info = await hello();
@@ -121,27 +121,66 @@ async function transfer(image: Uint8Array, onProgress: (p: Progress) => void): P
   }
 }
 
+/** かざし直しを何回まで促すか */
+const MAX_ATTEMPTS = 12;
+
 /**
  * 端末をかざしてもらい、画像を送る。
+ *
+ * NFC の通信距離は数 cm しかなく、少し動かすだけで切れる。
+ * 数十 KB を一度で送り切るのは現実的でないので、切れたらかざし直して
+ * もらい、受け取り済みの位置から続ける。位置は本体が返してくる。
  *
  * 呼ぶ前に NfcManager.start() を済ませておくこと。
  */
 export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => void): Promise<void> {
   const tech = Platform.OS === 'ios' ? NfcTech.MifareIOS : NfcTech.NfcA;
 
-  try {
-    await NfcManager.requestTechnology(tech, {
-      alertMessage: 'M5Paper に近づけてください',
-    });
-    await transfer(image, onProgress);
+  let sent = 0;
+  let lastError: unknown = null;
 
-    if (Platform.OS === 'ios') {
-      await NfcManager.setAlertMessageIOS('送信しました');
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const message = attempt === 0 ? 'M5Paper に近づけてください' : '続きを送ります。もう一度近づけてください';
+
+    try {
+      await NfcManager.requestTechnology(tech, { alertMessage: message });
+
+      let done = false;
+      await transfer(image, (p) => {
+        sent = p.sent;
+        onProgress(p);
+        done = p.sent >= p.total;
+      });
+      done = true;
+
+      if (done) {
+        if (Platform.OS === 'ios') {
+          await NfcManager.setAlertMessageIOS('送信しました');
+        }
+        await NfcManager.cancelTechnologyRequest().catch(() => undefined);
+        return;
+      }
+    } catch (e) {
+      lastError = e;
+      // 送れた分が増えていないなら、繋がっていないか設定が違う。
+      // 進んでいるなら電波が切れただけなので、かざし直してもらう。
+      if (sent === 0 && attempt > 0) {
+        break;
+      }
+    } finally {
+      // 例外が出ても必ず終了させる。残すと次回に繋がらなくなる。
+      await NfcManager.cancelTechnologyRequest().catch(() => undefined);
     }
-  } finally {
-    // 例外が出ても必ず終了させる。残すと次回に繋がらなくなる。
-    await NfcManager.cancelTechnologyRequest().catch(() => undefined);
   }
+
+  if (lastError instanceof NfcError) {
+    throw lastError;
+  }
+  throw new NfcError(
+    lastError instanceof Error
+      ? `送信が途中で切れました（${Math.round(sent / 1024)} KB まで送信）: ${lastError.message}`
+      : '送信が途中で切れました',
+  );
 }
 
 export async function isSupported(): Promise<boolean> {

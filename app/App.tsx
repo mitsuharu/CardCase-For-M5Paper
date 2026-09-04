@@ -3,14 +3,15 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Alert,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import NfcManager from 'react-native-nfc-manager';
 
 import { pickImage, prepareImage, takePhoto, type PreparedImage } from './src/imagePicker';
@@ -70,7 +71,10 @@ export default function App() {
       await sendImage(image.bytes, setProgress);
       setMessage('送信しました');
     } catch (e) {
-      setError(e instanceof Error ? e.message : '送信に失敗しました');
+      const text = e instanceof Error ? e.message : String(e);
+      setError(text);
+      // 画面の下に隠れて見落とさないよう、確実に見える形でも出す
+      Alert.alert('送信できませんでした', text);
     } finally {
       setBusy(false);
       setProgress(null);
@@ -79,12 +83,14 @@ export default function App() {
 
   if (supported === false) {
     return (
-      <SafeAreaView style={styles.screen}>
-        <View style={styles.center}>
-          <Text style={styles.title}>NFC を使えません</Text>
-          <Text style={styles.lead}>この端末は NFC に対応していません。</Text>
-        </View>
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.screen}>
+          <View style={styles.center}>
+            <Text style={styles.title}>NFC を使えません</Text>
+            <Text style={styles.lead}>この端末は NFC に対応していません。</Text>
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
@@ -93,6 +99,7 @@ export default function App() {
     : 0;
 
   return (
+    <SafeAreaProvider>
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content}>
@@ -150,6 +157,7 @@ export default function App() {
         {supported === null && <ActivityIndicator style={styles.status} />}
       </ScrollView>
     </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

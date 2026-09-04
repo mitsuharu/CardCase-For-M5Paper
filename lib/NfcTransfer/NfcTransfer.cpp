@@ -59,6 +59,11 @@ namespace
 
         State receive_callback(const uint8_t *rx, const uint32_t rx_len) override
         {
+            M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: rx len=%u %02X %02X %02X %02X\n",
+                   (unsigned)rx_len,
+                   rx_len > 0 ? rx[0] : 0, rx_len > 1 ? rx[1] : 0,
+                   rx_len > 2 ? rx[2] : 0, rx_len > 3 ? rx[3] : 0);
+
             size_t length = session.handle(rx, rx_len, response, sizeof(response));
             if (length == 0)
             {
@@ -66,9 +71,10 @@ namespace
                 return EmulationLayerA::receive_callback(rx, rx_len);
             }
 
-            return _unit.nfcaEmulationTransmit(response, static_cast<uint16_t>(length))
-                       ? State::Active
-                       : State::Idle;
+            bool sent = _unit.nfcaEmulationTransmit(response, static_cast<uint16_t>(length));
+            M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: tx cmd=%02X status=%02X len=%u sent=%d\n",
+                   response[3], response[4], (unsigned)length, sent ? 1 : 0);
+            return sent ? State::Active : State::Idle;
         }
 
     private:
