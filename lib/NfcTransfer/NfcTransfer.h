@@ -33,6 +33,9 @@ namespace NfcTransfer
     /// 受け取った画像。begin() から end() までの間だけ有効。
     const uint8_t *receivedImage(size_t &size);
 
+    /// SD に保存できた場合のパス。保存していなければ空。
+    String receivedImagePath();
+
     /// 受け取った画像を捨てて、次を待つ
     void releaseReceivedImage();
 

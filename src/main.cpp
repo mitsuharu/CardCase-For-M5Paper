@@ -398,15 +398,25 @@ void loop()
 
     if (NfcTransfer::hasReceivedImage())
     {
-      size_t size = 0;
-      const uint8_t *image = NfcTransfer::receivedImage(size);
-      M5Helper::drawImageFromMemory(image, size, profile);
-
-      NfcTransfer::releaseReceivedImage();
       NfcTransfer::end();
 
-      mode = Mode::Viewing;
-      viewingUntil = millis() + VIEWING_TIMEOUT_MS;
+      // SD に保存できていればファイルから、無ければメモリから表示する
+      String path = NfcTransfer::receivedImagePath();
+      if (path.length() > 0)
+      {
+        NfcTransfer::releaseReceivedImage();
+        showImage(path);
+      }
+      else
+      {
+        size_t size = 0;
+        const uint8_t *image = NfcTransfer::receivedImage(size);
+        M5Helper::drawImageFromMemory(image, size, profile);
+        NfcTransfer::releaseReceivedImage();
+
+        mode = Mode::Viewing;
+        viewingUntil = millis() + VIEWING_TIMEOUT_MS;
+      }
     }
     else if (wasReturnPressed())
     {

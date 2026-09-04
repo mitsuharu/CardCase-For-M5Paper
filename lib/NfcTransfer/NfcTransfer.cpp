@@ -12,6 +12,9 @@
 
 #include "Session/Session.h"
 
+#include <Storage.h>
+#include <ImageSize.h>
+
 namespace
 {
     // 受け皿の大きさ。画像 1 枚ぶん。
@@ -45,6 +48,61 @@ namespace
 
     bool ready = false;
     bool listening = false;
+    String receivedPath;
+
+    /**
+     * 受け取った画像を SD に残す。SD が無ければ何もしない。
+     *
+     * 一覧では [NFC] から来たものと分かるようにこの名前にする。
+     * 送るたびに上書きするので SD が埋まらない。形式は JPEG と PNG の
+     * どちらもありうるので、拡張子違いが残らないようまとめて消してから書く。
+     */
+    const char *kReceivedPrefix = "/NFC";
+    const char *kReceivedExtensions[] = {".png", ".jpg", ".jpeg"};
+
+    String saveToStorage(const uint8_t *data, size_t size)
+    {
+        if (!Storage::isAvailable() || data == nullptr || size == 0)
+        {
+            return String();
+        }
+
+        const char *extension = ImageFile::extensionFor(data, size);
+        if (extension == nullptr)
+        {
+            M5.Log(esp_log_level_t::ESP_LOG_WARN, "nfc: unknown image format\n");
+            return String();
+        }
+
+        for (size_t i = 0; i < sizeof(kReceivedExtensions) / sizeof(kReceivedExtensions[0]); i++)
+        {
+            String path = String(kReceivedPrefix) + kReceivedExtensions[i];
+            if (Storage::fs().exists(path))
+            {
+                Storage::fs().remove(path);
+            }
+        }
+
+        String path = String(kReceivedPrefix) + extension;
+        File file = Storage::fs().open(path, FILE_WRITE);
+        if (!file)
+        {
+            M5.Log(esp_log_level_t::ESP_LOG_ERROR, "nfc: cannot open %s\n", path.c_str());
+            return String();
+        }
+
+        size_t written = file.write(data, size);
+        file.close();
+
+        if (written != size)
+        {
+            M5.Log(esp_log_level_t::ESP_LOG_ERROR, "nfc: write failed\n");
+            return String();
+        }
+
+        M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: saved %s (%u bytes)\n", path.c_str(), (unsigned)size);
+        return path;
+    }
 
     /**
      * 受け取ったフレームに応答する。
@@ -59,11 +117,6 @@ namespace
 
         State receive_callback(const uint8_t *rx, const uint32_t rx_len) override
         {
-            M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: rx len=%u %02X %02X %02X %02X\n",
-                   (unsigned)rx_len,
-                   rx_len > 0 ? rx[0] : 0, rx_len > 1 ? rx[1] : 0,
-                   rx_len > 2 ? rx[2] : 0, rx_len > 3 ? rx[3] : 0);
-
             size_t length = session.handle(rx, rx_len, response, sizeof(response));
             if (length == 0)
             {
@@ -71,10 +124,10 @@ namespace
                 return EmulationLayerA::receive_callback(rx, rx_len);
             }
 
-            bool sent = _unit.nfcaEmulationTransmit(response, static_cast<uint16_t>(length));
-            M5.Log(esp_log_level_t::ESP_LOG_INFO, "nfc: tx cmd=%02X status=%02X len=%u sent=%d\n",
-                   response[3], response[4], (unsigned)length, sent ? 1 : 0);
-            return sent ? State::Active : State::Idle;
+            // フレームごとにログを出すと往復が増えて転送が遅くなるので出さない
+            return _unit.nfcaEmulationTransmit(response, static_cast<uint16_t>(length))
+                       ? State::Active
+                       : State::Idle;
         }
 
     private:
@@ -218,7 +271,21 @@ namespace NfcTransfer
 
     bool hasReceivedImage()
     {
-        return session.isComplete();
+        if (!session.isComplete())
+        {
+            return false;
+        }
+        // 受け取り切った時点で一度だけ保存する
+        if (receivedPath.length() == 0)
+        {
+            receivedPath = saveToStorage(session.image(), session.imageSize());
+        }
+        return true;
+    }
+
+    String receivedImagePath()
+    {
+        return receivedPath;
     }
 
     const uint8_t *receivedImage(size_t &size)
@@ -230,6 +297,7 @@ namespace NfcTransfer
     void releaseReceivedImage()
     {
         session.reset();
+        receivedPath = "";
     }
 
     uint32_t receivedBytes()

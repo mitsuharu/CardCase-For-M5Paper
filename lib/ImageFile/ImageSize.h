@@ -18,4 +18,13 @@ namespace ImageFile
      * 入っていると SOF は先頭から数十 KB 先になるので、data には十分な長さが要る。
      */
     bool imageSize(const uint8_t *data, size_t size, int *width, int *height);
+
+    /**
+     * 中身から拡張子を決める。
+     *
+     * 受け取った画像を保存するときに使う。送られてくる形式は JPEG と PNG の
+     * どちらもありうるが、名前は付いてこないので中身から判断する。
+     * どちらでもない場合は nullptr。
+     */
+    const char *extensionFor(const uint8_t *data, size_t size);
 }
