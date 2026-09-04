@@ -1,0 +1,96 @@
+name: App Release
+
+# スマホのアプリを焼いて DeployGate に上げる。
+# タグを打つか、Actions の画面から手動で実行する。
+# タグ名は app- を付けたバージョン（例: app-1.2.3）。
+# ファームウェアのリリース（1.2.3）とは別に動かすため、接頭辞で分けている。
+on:
+  push:
+    tags:
+      - 'app-[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: '焼く対象'
+        required: true
+        default: all
+        type: choice
+        options: [all, ios, android]
+      message:
+        description: 'DeployGate に添えるメモ'
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Set up Node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: app/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    # 実際のビルドは EAS のサーバーで走る。ここは投げて待つだけ。
+    # 証明書と署名鍵は EAS が預かっているので、この場には鍵を置かない。
+    # --wait で終わるまで待ち、--json で結果を受け取る。
+    - name: Build on EAS
+      env:
+        EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      run: |
+        PLATFORM="${{ inputs.platform || 'all' }}"
+        npx eas-cli build \
+          --profile release \
+          --platform "$PLATFORM" \
+          --non-interactive \
+          --wait \
+          --json > builds.json
+        jq -r '.[] | "\(.platform) \(.artifacts.buildUrl // .artifacts.applicationArchiveUrl)"' builds.json
+
+    # 成果物を落として DeployGate に渡す。
+    # EAS の配布ページでも配れるが、iOS と Android を 1 か所にまとめたいので通す。
+    - name: Upload to DeployGate
+      env:
+        DEPLOYGATE_USER: ${{ secrets.DEPLOYGATE_USER }}
+        DEPLOYGATE_API_TOKEN: ${{ secrets.DEPLOYGATE_API_TOKEN }}
+      run: |
+        MESSAGE="${{ inputs.message }}"
+        if [ -z "$MESSAGE" ]; then
+          MESSAGE="${GITHUB_REF_NAME} (${GITHUB_SHA::7})"
+        fi
+
+        jq -r '.[] | "\(.platform)\t\(.artifacts.buildUrl // .artifacts.applicationArchiveUrl)"' builds.json \
+        | while IFS=$'\t' read -r platform url; do
+            case "$platform" in
+              IOS) file=CardCase.ipa ;;
+              ANDROID) file=CardCase.apk ;;
+              *) echo "知らない対象: $platform" >&2; exit 1 ;;
+            esac
+
+            echo "==> $platform を落とす"
+            curl -sSL --fail-with-body -o "$file" "$url"
+
+            echo "==> $file を上げる"
+            response=$(curl -sS --fail-with-body \
+              -F "file=@$file" \
+              -F "token=$DEPLOYGATE_API_TOKEN" \
+              -F "message=$MESSAGE" \
+              "https://deploygate.com/api/users/$DEPLOYGATE_USER/apps")
+
+            if echo "$response" | jq -e '.error == true' > /dev/null; then
+              echo "失敗した: $(echo "$response" | jq -r '.message')" >&2
+              exit 1
+            fi
+            echo "上げた: $(echo "$response" | jq -r '.results.package_name // empty')"
+          done

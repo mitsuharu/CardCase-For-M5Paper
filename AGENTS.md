@@ -251,14 +251,17 @@ npx expo run:ios --device   # 実機に入れる
 
 リリースは多くないので無料枠で足りる。**開発中は手元の `expo run:ios` を使う。**キューを待っていられないため。
 
+配るときはタグを打つ。[App Release](.github/workflows/app-release.yml) が EAS に投げ、出来上がりを DeployGate に上げる。
+
 ```bash
-cd app
-npx eas build --profile release --platform all
+git tag app-1.2.3 && git push origin app-1.2.3
 ```
+
+**タグは `app-` で始める。**ファームウェアのリリース（`1.2.3`）と同じタグで動かさないため。
 
 証明書も Android の署名鍵も **EAS が預かる**。手元にもリポジトリにも鍵を置かない。版番号も EAS が数える（`eas.json` の `appVersionSource: remote` と `autoIncrement`）。
 
-DeployGate に集約するときだけ、成果物を落として `app/scripts/upload-deploygate.sh` で上げる。トークンは環境変数から読む。手順は [app/README.md](app/README.md) にある。
+**鍵は初回に手元で対話的に作る。**`npx eas build --profile release --platform all` を一度手で走らせる。CI は非対話なので、鍵が無い状態から始めると落ちる。
 
 iOS の Ad Hoc は登録済みの端末にしか入らない。**端末を増やしたら `eas device:create` で登録してから焼き直す。**配布済みの ipa に後から端末は足せない。
 
