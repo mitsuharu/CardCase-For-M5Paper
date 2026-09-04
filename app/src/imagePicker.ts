@@ -28,7 +28,9 @@ export async function prepareImage(
 ): Promise<PreparedImage> {
   const screenIsLandscape = screenWidth > screenHeight;
 
-  let quality = 0.8;
+  // 本体は白黒 4 階調なので、色や細かい階調は残しても表示に出ない。
+  // NFC は速くないため、送る量を減らすほうが効く。
+  let quality = 0.6;
   let scale = 1;
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -56,8 +58,8 @@ export async function prepareImage(
     }
 
     // まず品質を落とし、それでも収まらなければ小さくする
-    if (quality > 0.45) {
-      quality -= 0.15;
+    if (quality > 0.3) {
+      quality -= 0.1;
     } else {
       scale *= 0.75;
     }

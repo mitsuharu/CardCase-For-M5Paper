@@ -21,8 +21,14 @@ import { isSupported, sendImage, type Progress } from './src/nfcSender';
 const SCREEN_WIDTH = 480;
 const SCREEN_HEIGHT = 800;
 
-// 本体が受け取れる上限。HELLO でも確かめるが、送る前に縮めるために使う。
-const MAX_BYTES = 256 * 1024;
+/**
+ * 送る大きさの目安。
+ *
+ * 本体が受け取れる上限は 256KB だが、NFC は 5KB/秒ほどしか出ない。
+ * 上限まで送ると 1 分近くかざし続けることになる。
+ * 本体の階調は 4 段階しかないので、この程度まで落としても見た目は変わらない。
+ */
+const MAX_BYTES = 24 * 1024;
 
 export default function App() {
   const [supported, setSupported] = useState<boolean | null>(null);
