@@ -28,59 +28,51 @@ export async function prepareImage(
 ): Promise<PreparedImage> {
   // 元の大きさを知るために一度だけ読む
   const source = await ImageManipulator.ImageManipulator.manipulate(uri).renderAsync();
-  const sourceWidth = source.width;
-  const sourceHeight = source.height;
 
   // 本体は画像の向きに応じて画面を回すので、実際に表示される枠は
-  // 画像が横長か縦長かで変わる。その枠に収まる大きさを出発点にする。
-  // 回転そのものは本体側に任せる。
+  // 画像が横長か縦長かで変わる。回転そのものは本体側に任せる。
   const screenIsLandscape = screenWidth > screenHeight;
-  const imageIsLandscape = sourceWidth > sourceHeight;
+  const imageIsLandscape = source.width > source.height;
   const boxWidth = imageIsLandscape === screenIsLandscape ? screenWidth : screenHeight;
   const boxHeight = imageIsLandscape === screenIsLandscape ? screenHeight : screenWidth;
-  const baseScale = Math.min(1, boxWidth / sourceWidth, boxHeight / sourceHeight);
 
-  // 本体は白黒 4 階調しか出せないので、品質を落としても見た目に響かない。
-  // NFC は速くないため、まず品質で削り、足りなければ小さくする。
-  const scales = [1, 0.8, 0.65, 0.5, 0.4];
-  const qualities = [0.6, 0.45, 0.3, 0.2, 0.1];
+  // 縮小は一度だけ。画面より大きくしても表示に使えず、
+  // 画面より小さくすると無駄に粗くなるので、ここが唯一の正解になる。
+  const scale = Math.min(1, boxWidth / source.width, boxHeight / source.height);
+  const width = Math.max(1, Math.round(source.width * scale));
+  const height = Math.max(1, Math.round(source.height * scale));
 
+  const rendered = await ImageManipulator.ImageManipulator.manipulate(uri)
+    .resize({ width, height })
+    .renderAsync();
+
+  // 送る量は品質だけで調整する。本体は白黒 4 階調しか出せないので、
+  // 品質を落としても見た目にはほとんど響かない。
+  const qualities = [0.7, 0.5, 0.35, 0.25, 0.15, 0.05];
   let smallest: PreparedImage | null = null;
 
-  for (const scale of scales) {
-    const width = Math.max(1, Math.round(sourceWidth * baseScale * scale));
-    const height = Math.max(1, Math.round(sourceHeight * baseScale * scale));
+  for (const quality of qualities) {
+    const saved = await rendered.saveAsync({
+      compress: quality,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+    const bytes = await new File(saved.uri).bytes();
+    const candidate: PreparedImage = {
+      bytes,
+      uri: saved.uri,
+      width: saved.width,
+      height: saved.height,
+    };
 
-    // 縮小は倍率ごとに一度だけ。品質だけ変えて試すほうが速い。
-    const rendered = await ImageManipulator.ImageManipulator.manipulate(uri)
-      .resize({ width, height })
-      .renderAsync();
-
-    for (const quality of qualities) {
-      const saved = await rendered.saveAsync({
-        compress: quality,
-        format: ImageManipulator.SaveFormat.JPEG,
-      });
-      const bytes = await new File(saved.uri).bytes();
-      const candidate: PreparedImage = {
-        bytes,
-        uri: saved.uri,
-        width: saved.width,
-        height: saved.height,
-      };
-
-      if (bytes.length <= maxBytes) {
-        return candidate;
-      }
-      // 収まらなくても、一番小さかったものは覚えておく
-      if (!smallest || bytes.length < smallest.bytes.length) {
-        smallest = candidate;
-      }
+    if (bytes.length <= maxBytes) {
+      return candidate;
+    }
+    if (!smallest || bytes.length < smallest.bytes.length) {
+      smallest = candidate;
     }
   }
 
-  // ここまで来ることはまずないが、送れないと突き放すより
-  // 一番小さくできたもので進めるほうが役に立つ
+  // 目安を超えても送れないわけではない。時間がかかることは呼び出し側が伝える。
   if (smallest) {
     return smallest;
   }
