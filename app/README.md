@@ -59,23 +59,70 @@ open ios/CardCase.xcworkspace
 
 ## 配布
 
-使うのが自分と身内だけなら、審査の要らない方法が楽です。
+審査を通さずに配る。使うのが自分と身内だけなら、この方が早い。
 
 | | 形式 | 制約 |
 | --- | --- | --- |
 | iOS | Ad Hoc | **端末の UDID 登録**が必要。有効期限 1 年、最大 100 台 |
 | Android | APK | 制約なし。提供元不明のアプリを許可するだけ |
 
-EAS でビルドすると、`internal` の配布用に iOS は Ad Hoc、Android は APK が出ます。
+**リリース用のビルドは EAS（クラウド）で焼く。**特定の Mac に依存させないため。手元でビルドすると、その機械の Xcode・鍵・`ios/` の状態が成果物に混ざる。実際、`app.json` で bundle id を変えたのに `ios/` が古いままで、別の id のまま焼けていたことがある。EAS は毎回まっさらな状態で `app.json` から作り直すので、これが起きない。
+
+リリースは多くないので無料枠（iOS / Android それぞれ月 15 回・低優先度キュー）で足りる。**開発中は今までどおり手元の `expo run:ios` を使う。**キューを待っていられないため。
+
+### 一度だけやること
 
 ```bash
-npx eas build --profile preview --platform ios
-npx eas build --profile preview --platform android
+cd app
+npx eas login
+npx eas build:configure
 ```
 
-無料枠は iOS / Android それぞれ月 15 回・低優先度キューです。**直しては試す作業には向かない**ので、開発中は上のローカルビルドを使い、配布するときだけ使ってください。
+**iOS の端末を登録する。**Ad Hoc は登録済みの端末にしか入らない。
 
-できあがった成果物は DeployGate などに置いて配れます。
+```bash
+npx eas device:create
+```
+
+Apple Developer に登録済みの端末は取り込める。初回ビルド時に「どの端末を入れるか」を訊かれる。
+
+証明書と Android の署名鍵は **EAS が作って預かる**ので、手元に鍵を置く必要はない。中身を見たいときは `npx eas credentials`。
+
+**DeployGate に置くなら** API key を [設定ページ](https://deploygate.com/settings)で発行して、シェルの設定に書いておく。
+
+```bash
+export DEPLOYGATE_USER=あなたのユーザー名
+export DEPLOYGATE_API_TOKEN=発行した API key
+```
+
+### 配るとき
+
+```bash
+cd app
+npx eas build --profile release --platform all
+```
+
+終わると配布ページの URL が出る。**そのまま QR で入れられる**ので、身内に配るだけならここで終わり。
+
+DeployGate に集約したいときは、成果物を落としてから上げる。
+
+```bash
+npx eas build:download --platform ios --latest --output build/CardCase.ipa
+./scripts/upload-deploygate.sh build/CardCase.ipa "NFC の送信をやめられるようにした"
+```
+
+版番号は EAS が数えている（`eas.json` の `appVersionSource: remote` と `autoIncrement`）。手で上げなくていい。`app.json` の `version` は、人に見せる版として節目で上げる。
+
+### 端末を増やしたとき
+
+UDID を登録してから、**焼き直す**。
+
+```bash
+npx eas device:create
+npx eas build --profile release --platform ios
+```
+
+配布済みの ipa に後から端末は足せない。プロファイルに焼き込まれているため。
 
 ## 中身
 
