@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.mitsuharu.cardcase",
+      "bundleIdentifier": "net.mituwa.cardcase",
       "infoPlist": {
         "NFCReaderUsageDescription": "M5Paper に画像を送るために NFC を使います。"
       },
@@ -26,7 +26,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.mitsuharu.cardcase"
+      "package": "net.mituwa.cardcase"
     },
     "web": {
       "favicon": "./assets/favicon.png"
