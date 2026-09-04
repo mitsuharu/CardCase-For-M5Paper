@@ -16,6 +16,7 @@ enum class MenuItemKind
 {
     Image,    // SD 内の画像。value は画像のパス
     Transfer, // WiFi で画像を受け取る
+    Nfc,      // NFC で画像を受け取る
 };
 
 /// 一覧に載せる 1 項目
