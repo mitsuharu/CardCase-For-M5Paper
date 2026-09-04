@@ -17,7 +17,7 @@ on:
         type: choice
         options: [all, ios, android]
       version:
-        description: 'GitHub Release を作るバージョン（例: 1.2.3）。空なら Release は作らない'
+        description: 'GitHub Release を作るバージョン（例: 1.2.3）。app- は自動で付く。空なら Release は作らない'
         required: false
         type: string
       message:
@@ -59,8 +59,10 @@ jobs:
     - name: Build on EAS
       env:
         EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        # 選択式なので値は限られるが、入力は env 経由で受けると決めておく
+        INPUT_PLATFORM: ${{ inputs.platform }}
       run: |
-        PLATFORM="${{ inputs.platform || 'all' }}"
+        PLATFORM="${INPUT_PLATFORM:-all}"
         npx eas-cli@23.2.0 build \
           --profile release \
           --platform "$PLATFORM" \
@@ -90,8 +92,11 @@ jobs:
       env:
         DEPLOYGATE_USER: ${{ secrets.DEPLOYGATE_USER }}
         DEPLOYGATE_API_TOKEN: ${{ secrets.DEPLOYGATE_API_TOKEN }}
+        # 入力は env 経由で受ける。${{ }} で直接展開すると、
+        # 打った内容がそのままシェルとして動いてしまう。
+        INPUT_MESSAGE: ${{ inputs.message }}
       run: |
-        MESSAGE="${{ inputs.message }}"
+        MESSAGE="$INPUT_MESSAGE"
         if [ -z "$MESSAGE" ]; then
           MESSAGE="${GITHUB_REF_NAME} (${GITHUB_SHA::7})"
         fi
@@ -118,14 +123,22 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/app-') || inputs.version != ''
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        INPUT_VERSION: ${{ inputs.version }}
       run: |
         # 手動実行のときはタグが無いので、入力から組み立てて gh に作らせる。
-        if [ -n "${{ inputs.version }}" ]; then
-          TAG="app-${{ inputs.version }}"
+        if [ -n "$INPUT_VERSION" ]; then
+          # app- を付けて入れられても二重にしない
+          VERSION="${INPUT_VERSION#app-}"
         else
-          TAG="$GITHUB_REF_NAME"
+          VERSION="${GITHUB_REF_NAME#app-}"
         fi
-        VERSION="${TAG#app-}"
+
+        # 打ち間違いでおかしな名前の Release が公開されるのを防ぐ
+        if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "バージョンの形式が違う: $VERSION（例: 1.2.3）" >&2
+          exit 1
+        fi
+        TAG="app-$VERSION"
 
         cat > notes.md <<'EOF'
         M5Paper に NFC で画像を送るアプリです。
