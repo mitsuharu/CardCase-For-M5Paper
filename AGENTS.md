@@ -176,7 +176,7 @@ uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 | 変えたところ | 動く CI | 中身 |
 | --- | --- | --- |
 | `src/` `lib/` など | PlatformIO CI | native テスト、4 機種のビルド |
-| `app/` | App CI | 型、決まりの照合、Android のビルド |
+| `app/` | App CI | 型、試験、束ね、決まりの照合、Android のビルド |
 | `lib/NfcTransfer/Protocol/` | **両方** | 本体とアプリで対になっているため |
 
 **`app/src/protocol.ts` と `lib/NfcTransfer/Protocol/Protocol.h` は対になっている。**片方だけ直すと、その場では気づかず実機で初めて転送が失敗する。`app/scripts/check-protocol.mjs` が 21 個の値を突き合わせて、食い違えば落とす。手元でも見られる。
@@ -186,6 +186,27 @@ cd app && npm run check-protocol
 ```
 
 iOS は CI で組み立てない。macOS のランナーが要るうえ遅い。Android は `prebuild` から通すので、`app.json` やプラグインの書き間違いはここで落ちる。
+
+**Metro で束ねるところまで通す。**Android の debug のビルドは JS を束ねないので、import の解決ミスはそちらでは落ちない。`npm run bundle` の方で落ちる。
+
+### アプリでも純粋ロジックは切り離して試験する
+
+本体側の「純粋ロジックは `#ifdef ARDUINO` の外に置く」と同じことをアプリでもやる。実機の API（`react-native-nfc-manager`、`expo-image-manipulator`）を読み込むファイルは node から動かせないので、計算と判断だけを別のファイルに出す。
+
+| ファイル | 中身 |
+| --- | --- |
+| `src/protocol.ts` | バイト列の読み書き、CRC-32 |
+| `src/fit.ts` | 画面に収める大きさの計算 |
+| `src/chunking.ts` | 1 回に送る大きさ、かざし直しの判断 |
+| `src/errors.ts` | 例外。実機の API を読まずに種類を見分けるため |
+
+```bash
+cd app && npm test
+```
+
+`node --test` で `.ts` をそのまま動かす。試験の道具は足していない。**`src/` から `src/` を読むときは拡張子まで書く**（`./protocol.ts`）。Metro は省略しても解決するが、node は解決しない。
+
+**CRC-32 は本体側と同じ既知の値で固定してある。**ここが食い違うと、送った画像が必ず壊れていると判定される。
 
 ## 新しい機種を追加する手順
 

@@ -1,6 +1,11 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // 拡張子まで書いた import を許す。test/ から src/ を node で
+    // 読み込むため。Metro は省略しても解決するが、node は解決しない。
+    "allowImportingTsExtensions": true,
+    // node:test と node:assert を使うため。expo の既定では入らない。
+    "types": ["node"]
   }
 }

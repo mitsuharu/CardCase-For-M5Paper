@@ -26,7 +26,8 @@ jobs:
     - name: Set up Node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
-        node-version: 22
+        # 型を消しながら .ts をそのまま実行するので 24 を使う
+        node-version: 24
         cache: npm
         cache-dependency-path: app/package-lock.json
 
@@ -35,6 +36,14 @@ jobs:
 
     - name: Check types
       run: npx tsc --noEmit
+
+    - name: Run tests
+      run: npm test
+
+    # debug のビルドは JS を束ねないので、import の解決ミスはそちらでは
+    # 落ちない。束ねるところまで通して確かめる。
+    - name: Bundle with Metro
+      run: npm run bundle
 
     # 片方だけ直すと、その場では気づかず実機で初めて転送が失敗する。
     - name: Check protocol matches the firmware

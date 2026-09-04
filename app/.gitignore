@@ -42,3 +42,6 @@ yarn-error.*
 
 # ビルド成果物
 build/
+
+# 束ねた結果の確認用
+.expo-export/
