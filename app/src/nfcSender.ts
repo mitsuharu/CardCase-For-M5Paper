@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import {
   Command,
+  HEADER_SIZE,
   MAX_CHUNK_SIZE,
   Status,
   crc32,
@@ -52,6 +53,27 @@ async function send(command: number, body: number[]): Promise<number[]> {
   return response;
 }
 
+/**
+ * Android では端末ごとに 1 回で送れる長さの上限が違う。
+ * 253 バイトを扱えない端末があるので、繋いだあとに確かめる。
+ * iOS にはこの API が無く、上限も十分あるので確かめない。
+ */
+async function deviceChunkLimit(): Promise<number> {
+  if (Platform.OS !== 'android') {
+    return MAX_CHUNK_SIZE;
+  }
+  try {
+    const max = await NfcManager.getMaxTransceiveLength();
+    if (!max || max <= 0) {
+      return MAX_CHUNK_SIZE;
+    }
+    // 送るのは見出しと位置を含めた全体なので、その分を引く
+    return Math.max(1, Math.min(MAX_CHUNK_SIZE, max - (HEADER_SIZE + 4 + 4)));
+  } catch {
+    return MAX_CHUNK_SIZE;
+  }
+}
+
 /** 本体の能力を尋ねる */
 async function hello(): Promise<DeviceInfo> {
   const response = await send(Command.Hello, []);
@@ -91,8 +113,8 @@ async function transfer(image: Uint8Array, onProgress: (p: Progress) => Promise<
   let offset = readU32(begin, 9);
   await onProgress({ sent: offset, total: image.length });
 
-  // 本体が扱える大きさに合わせる。こちらの上限より小さいことがある。
-  const chunkSize = Math.min(info.maxChunkSize, MAX_CHUNK_SIZE);
+  // 本体と端末のどちらの上限にも収まる大きさにする
+  const chunkSize = Math.min(info.maxChunkSize, MAX_CHUNK_SIZE, await deviceChunkLimit());
 
   while (offset < image.length) {
     const length = Math.min(chunkSize, image.length - offset);
@@ -166,6 +188,11 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
   await NfcManager.requestTechnology(tech, {
     alertMessage: 'M5Paper に近づけたまま待ってください',
   });
+
+  if (Platform.OS === 'android') {
+    // 既定の待ち時間は短く、本体の応答が間に合わないことがある
+    await NfcManager.setTimeout(1000).catch(() => undefined);
+  }
 
   try {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {

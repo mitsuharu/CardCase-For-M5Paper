@@ -158,10 +158,19 @@ export default function App() {
         {progress && (
           <View style={styles.status}>
             <ActivityIndicator />
+            {/* iOS は同じ内容がシートに出るが、Android は何も出ないのでここで見せる */}
+            <Text style={styles.progressLabel}>送信中 {percent}%</Text>
+            <View style={styles.bar}>
+              <View style={[styles.barFill, { width: `${percent}%` }]} />
+            </View>
             <Text style={styles.caption}>
-              送信中 {percent}% ({Math.round(progress.sent / 1024)} / {Math.round(progress.total / 1024)} KB)
+              {Math.round(progress.sent / 1024)} / {Math.round(progress.total / 1024)} KB
             </Text>
-            <Text style={styles.hint}>本体から離さないでください</Text>
+            <Text style={styles.hint}>
+              {Platform.OS === 'android'
+                ? '本体にかざしたまま離さないでください'
+                : '本体から離さないでください'}
+            </Text>
           </View>
         )}
 
@@ -193,6 +202,16 @@ const styles = StyleSheet.create({
   caption: { marginTop: 8, fontSize: 13, color: '#666' },
   hint: { marginTop: 4, fontSize: 13, color: '#b06000' },
   status: { marginTop: 24, alignItems: 'center' },
+  progressLabel: { marginTop: 12, fontSize: 17, fontWeight: '700', color: '#222' },
+  bar: {
+    width: '100%',
+    height: 8,
+    marginTop: 10,
+    borderRadius: 4,
+    backgroundColor: '#e6e6e6',
+    overflow: 'hidden',
+  },
+  barFill: { height: '100%', backgroundColor: '#1257a0' },
   ok: { marginTop: 20, fontSize: 15, fontWeight: '600', color: '#1a7f37', textAlign: 'center' },
   error: { marginTop: 20, fontSize: 15, fontWeight: '600', color: '#b00', textAlign: 'center' },
 });
