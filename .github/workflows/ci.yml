@@ -3,6 +3,10 @@ name: PlatformIO CI
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    # アプリだけの変更では動かさない。そちらは App CI が見る。
+    # 両方動かすと、片方には関係のない待ち時間が毎回乗る。
+    paths-ignore:
+      - 'app/**'
 
 permissions:
   contents: write

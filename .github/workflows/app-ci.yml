@@ -1,0 +1,55 @@
+name: App CI
+
+# アプリを触ったときだけ動かす。
+# ファームウェアの CI（PlatformIO CI）とは対象が重ならないようにしてある。
+# 両方動かすと、片方には関係のない待ち時間が毎回乗るため。
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'app/**'
+      - '.github/workflows/app-ci.yml'
+      # やり取りの決まりは本体と対になっている。本体側を直したときも見る。
+      - 'lib/NfcTransfer/Protocol/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Set up Node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: app/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Check types
+      run: npx tsc --noEmit
+
+    # 片方だけ直すと、その場では気づかず実機で初めて転送が失敗する。
+    - name: Check protocol matches the firmware
+      run: node scripts/check-protocol.mjs
+
+    - name: Set up Java
+      uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      with:
+        distribution: temurin
+        java-version: 17
+
+    # android/ は prebuild で作り直されるので、生成できるところから確かめる。
+    # app.json やプラグインの書き間違いはここで落ちる。
+    # iOS は macOS のランナーが要るうえ遅いので CI では組み立てない。
+    - name: Build Android
+      run: |
+        npx expo prebuild --platform android
+        cd android && ./gradlew assembleDebug --no-daemon

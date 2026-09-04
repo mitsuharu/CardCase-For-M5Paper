@@ -169,6 +169,24 @@ uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
 実機でしか確認できないこと（描画結果、タッチ、スリープ復帰、SD の読み書き）は、対象の機種すべてで手動確認する。特に UI を変えたときは M5PaperColor でのボタン操作を必ず確認する。
 
+### CI は触ったところだけ動かす
+
+本体とアプリの CI は分けてある。両方動かすと、片方には関係のない待ち時間が毎回乗るため。
+
+| 変えたところ | 動く CI | 中身 |
+| --- | --- | --- |
+| `src/` `lib/` など | PlatformIO CI | native テスト、4 機種のビルド |
+| `app/` | App CI | 型、決まりの照合、Android のビルド |
+| `lib/NfcTransfer/Protocol/` | **両方** | 本体とアプリで対になっているため |
+
+**`app/src/protocol.ts` と `lib/NfcTransfer/Protocol/Protocol.h` は対になっている。**片方だけ直すと、その場では気づかず実機で初めて転送が失敗する。`app/scripts/check-protocol.mjs` が 21 個の値を突き合わせて、食い違えば落とす。手元でも見られる。
+
+```bash
+cd app && npm run check-protocol
+```
+
+iOS は CI で組み立てない。macOS のランナーが要るうえ遅い。Android は `prebuild` から通すので、`app.json` やプラグインの書き間違いはここで落ちる。
+
 ## 新しい機種を追加する手順
 
 1. M5GFX の `src/lgfx/v1/boards.hpp` に `board_t` の定義があるか確認する。無ければライブラリの更新が必要

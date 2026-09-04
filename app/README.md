@@ -170,6 +170,13 @@ npx eas-cli device:create
 
 **`src/protocol.ts` を変えたら、本体側も直してください。** とくに CRC-32 は値が食い違うと転送が必ず失敗します。決まりは [NFC 転送プロトコル](../docs/nfc-protocol.md) にまとめてあります。
 
+食い違いは機械が見ます。CI でも動きますが、手元でも確かめられます。
+
+```bash
+npm run typecheck
+npm run check-protocol
+```
+
 ## 動かないとき
 
 | 症状 | 見るところ |
