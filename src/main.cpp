@@ -45,6 +45,9 @@ unsigned long viewingUntil = 0;
 /// SD を後始末してからディープスリープに入る
 void enterDeepSleep()
 {
+#ifdef CARDCASE_HAS_NFC
+  NfcTransfer::end();
+#endif
   Storage::end();
 
   // 電池のためスリープに入る。再び画像選択したい場合は電源ボタンを押す。
@@ -224,15 +227,47 @@ void startTransfer()
   mode = Mode::Transferring;
 }
 
-/// NFC で画像を受け取る状態に入る
+#ifdef CARDCASE_HAS_NFC
+/**
+ * NFC で受け取った画像があれば表示する。
+ *
+ * 待ち受けは常に動いているので、一覧を見ている最中でも届く。
+ * どの画面から受け取っても同じように扱う。
+ */
+bool showNfcImageIfReceived()
+{
+  if (!NfcTransfer::hasReceivedImage())
+  {
+    return false;
+  }
+
+  // SD に保存できていればファイルから、無ければメモリから表示する
+  String path = NfcTransfer::receivedImagePath();
+  if (path.length() > 0)
+  {
+    imageListStale = true;
+    NfcTransfer::releaseReceivedImage();
+    showImage(path);
+    return true;
+  }
+
+  size_t size = 0;
+  const uint8_t *image = NfcTransfer::receivedImage(size);
+  M5Helper::drawImageFromMemory(image, size, profile);
+  NfcTransfer::releaseReceivedImage();
+
+  mode = Mode::Viewing;
+  viewingUntil = millis() + VIEWING_TIMEOUT_MS;
+  return true;
+}
+#endif
+
+/// NFC で画像を受け取る案内を出す
 void startNfc()
 {
 #ifdef CARDCASE_HAS_NFC
-  if (!NfcTransfer::begin(profile))
-  {
-    halt("failed to start NFC.");
-  }
-
+  // 待ち受けは起動時に始めていて、止めない。
+  // 一度止めると受信の経路が戻らず、次から届かなくなるため。
   M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
   if (M5.Display.isEPD())
   {
@@ -248,6 +283,8 @@ void startNfc()
   M5.Display.endWrite();
   M5.Display.waitDisplay();
 
+  // ここからだけ受け取る。一覧を見ている間に届いても無視する。
+  NfcTransfer::setAccepting(true);
   mode = Mode::Receiving;
 #endif
 }
@@ -368,6 +405,15 @@ void setup()
     halt("no input available.");
   }
 
+#ifdef CARDCASE_HAS_NFC
+  // NFC の待ち受けはここで始めて、電源が切れるまで止めない。
+  // 一度止めると受信の経路が戻らず、次から届かなくなる。
+  if (profile.hasNfc && !NfcTransfer::begin(profile))
+  {
+    M5.Log(esp_log_level_t::ESP_LOG_WARN, "NFC is not available\n");
+  }
+#endif
+
   // 見出しから一覧まで、まとめて 1 回で描く
   M5.Display.startWrite();
   M5.Display.fillScreen(TFT_WHITE);
@@ -423,36 +469,20 @@ void loop()
   }
 
 #ifdef CARDCASE_HAS_NFC
+  // 待ち受け自体は止められないので毎回回す。
+  // 受け取るかどうかは setAccepting で切り替える。
+  NfcTransfer::update();
+
   if (mode == Mode::Receiving)
   {
-    NfcTransfer::update();
-
-    if (NfcTransfer::hasReceivedImage())
+    if (showNfcImageIfReceived())
     {
-      NfcTransfer::end();
-
-      // SD に保存できていればファイルから、無ければメモリから表示する
-      String path = NfcTransfer::receivedImagePath();
-      if (path.length() > 0)
-      {
-        imageListStale = true;
-        NfcTransfer::releaseReceivedImage();
-        showImage(path);
-      }
-      else
-      {
-        size_t size = 0;
-        const uint8_t *image = NfcTransfer::receivedImage(size);
-        M5Helper::drawImageFromMemory(image, size, profile);
-        NfcTransfer::releaseReceivedImage();
-
-        mode = Mode::Viewing;
-        viewingUntil = millis() + VIEWING_TIMEOUT_MS;
-      }
+      NfcTransfer::setAccepting(false);
+      return;
     }
-    else if (wasReturnPressed())
+    if (wasReturnPressed())
     {
-      NfcTransfer::end();
+      NfcTransfer::setAccepting(false);
       clearScreen();
       returnToMenu();
     }

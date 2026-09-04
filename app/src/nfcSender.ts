@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import {
   Command,
+  HEADER_SIZE,
   MAX_CHUNK_SIZE,
   Status,
   crc32,
@@ -29,6 +30,23 @@ export type DeviceInfo = {
 
 export class NfcError extends Error {}
 
+/** 利用者が自分でやめたとき。失敗として扱わない。 */
+export class NfcCancelled extends Error {}
+
+let cancelRequested = false;
+
+/**
+ * 送信をやめる。
+ *
+ * iOS はシートに「キャンセル」があるが、Android は何も出ないので
+ * アプリ側にやめる手段が要る。繋ぎ直しをくり返す作りなので、
+ * 印を立てるだけでは止まらない。通信そのものも打ち切る。
+ */
+export function cancelSending(): void {
+  cancelRequested = true;
+  NfcManager.cancelTechnologyRequest().catch(() => undefined);
+}
+
 /**
  * NFC でフレームを 1 往復させる。
  *
@@ -52,11 +70,38 @@ async function send(command: number, body: number[]): Promise<number[]> {
   return response;
 }
 
+/**
+ * Android では端末ごとに 1 回で送れる長さの上限が違う。
+ * 253 バイトを扱えない端末があるので、繋いだあとに確かめる。
+ * iOS にはこの API が無く、上限も十分あるので確かめない。
+ */
+async function deviceChunkLimit(): Promise<number> {
+  if (Platform.OS !== 'android') {
+    return MAX_CHUNK_SIZE;
+  }
+  try {
+    const max = await NfcManager.getMaxTransceiveLength();
+    if (!max || max <= 0) {
+      return MAX_CHUNK_SIZE;
+    }
+    // 送るのは見出しと位置を含めた全体なので、その分を引く
+    return Math.max(1, Math.min(MAX_CHUNK_SIZE, max - (HEADER_SIZE + 4 + 4)));
+  } catch {
+    return MAX_CHUNK_SIZE;
+  }
+}
+
 /** 本体の能力を尋ねる */
 async function hello(): Promise<DeviceInfo> {
   const response = await send(Command.Hello, []);
-  if (responseStatus(response) !== Status.Ok) {
-    throw new NfcError(`本体が応答しません (${statusName(responseStatus(response))})`);
+  const status = responseStatus(response);
+
+  if (status === Status.NotReady) {
+    // 本体は待ち受けているが、受け取る画面になっていない
+    throw new NfcError('本体で [NFC] を選んでから送ってください');
+  }
+  if (status !== Status.Ok) {
+    throw new NfcError(`本体が応答しません (${statusName(status)})`);
   }
   return {
     maxChunkSize: readU16(response, 5),
@@ -91,8 +136,8 @@ async function transfer(image: Uint8Array, onProgress: (p: Progress) => Promise<
   let offset = readU32(begin, 9);
   await onProgress({ sent: offset, total: image.length });
 
-  // 本体が扱える大きさに合わせる。こちらの上限より小さいことがある。
-  const chunkSize = Math.min(info.maxChunkSize, MAX_CHUNK_SIZE);
+  // 本体と端末のどちらの上限にも収まる大きさにする
+  const chunkSize = Math.min(info.maxChunkSize, MAX_CHUNK_SIZE, await deviceChunkLimit());
 
   while (offset < image.length) {
     const length = Math.min(chunkSize, image.length - offset);
@@ -144,10 +189,19 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
   let stalled = 0;
   let lastError: unknown = null;
 
+  cancelRequested = false;
+
+  // 前回の接続が残っていると次が始められない。
+  // 送信中に画面を離れるなどで残ることがあるので、始める前に必ず落とす。
+  await NfcManager.cancelTechnologyRequest().catch(() => undefined);
+
   // シートの文言を進み具合に合わせて書き換える。
   // 毎回書くと 1 通信ごとに往復が増えるので、変化が見える幅でだけ更新する。
   let shownPercent = -1;
   const report = async (p: Progress) => {
+    if (cancelRequested) {
+      throw new NfcCancelled('送信をやめました');
+    }
     sent = p.sent;
     onProgress(p);
 
@@ -167,6 +221,11 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
     alertMessage: 'M5Paper に近づけたまま待ってください',
   });
 
+  if (Platform.OS === 'android') {
+    // 既定の待ち時間は短く、本体の応答が間に合わないことがある
+    await NfcManager.setTimeout(1000).catch(() => undefined);
+  }
+
   try {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const before = sent;
@@ -179,10 +238,13 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
         }
         return;
       } catch (e) {
+        if (cancelRequested || e instanceof NfcCancelled) {
+          throw new NfcCancelled('送信をやめました');
+        }
         lastError = e;
 
-        // 相手が違う、大きすぎるなど、繋ぎ直しても直らないものは即やめる
-        if (e instanceof NfcError && sent === 0 && attempt > 0) {
+        // 相手が違う、受け取る画面でないなど、繋ぎ直しても直らないものは即やめる
+        if (e instanceof NfcError && sent === 0) {
           throw e;
         }
 
@@ -191,6 +253,10 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
         if (stalled >= 3) {
           break;
         }
+      }
+
+      if (cancelRequested) {
+        throw new NfcCancelled('送信をやめました');
       }
 
       if (ios) {
