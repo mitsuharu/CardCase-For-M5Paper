@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "CardCase",
+    "slug": "cardcase",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.mitsuharu.cardcase",
+      "infoPlist": {
+        "NFCReaderUsageDescription": "M5Paper に画像を送るために NFC を使います。"
+      },
+      "entitlements": {
+        "com.apple.developer.nfc.readersession.formats": [
+          "TAG"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.mitsuharu.cardcase"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "M5Paper に画像を送るために NFC を使います。"
+        }
+      ]
+    ],
+    "scheme": "cardcase"
+  }
+}
