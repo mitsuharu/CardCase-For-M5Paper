@@ -169,10 +169,13 @@ jobs:
           START="--notes-start-tag $PREV"
         fi
 
+        # 最新の印は取らない。このリポジトリの主役はファームウェアで、
+        # 取ってしまうと開いた人にアプリが最新のものとして出る。
         gh release create "$TAG" \
           --title "App $VERSION" \
           --notes-file notes.md \
           --generate-notes \
           $START \
+          --latest=false \
           --target "${{ github.sha }}" \
           dist/CardCase.apk

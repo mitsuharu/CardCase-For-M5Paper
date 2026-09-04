@@ -329,3 +329,17 @@ Android の APK は GitHub Release にも置く。誰でも入れられるので
 **鍵は初回に手元で対話的に作る。**`npx eas-cli build --profile release --platform all` を一度手で走らせる。CI は非対話なので、鍵が無い状態から始めると落ちる。
 
 iOS の Ad Hoc は登録済みの端末にしか入らない。**端末を増やしたら `eas device:create` で登録してから焼き直す。**配布済みの ipa に後から端末は足せない。
+
+### APK は実機で使う ABI だけ入れる
+
+既定では 4 つの ABI（`armeabi-v7a` / `arm64-v8a` / `x86` / `x86_64`）が全部入り、APK が 67MB になる。**うち約 31MB は x86 系で、実機では一切使われない。**エミュレータ用しかない。
+
+`eas.json` の `env` で Gradle のプロパティを上書きして、実機で使う 2 つに絞っている。
+
+```json
+"env": { "ORG_GRADLE_PROJECT_reactNativeArchitectures": "armeabi-v7a,arm64-v8a" }
+```
+
+ABI ごとに **分割はしない**。APK が複数になると、取得も DeployGate も Release も 1 ファイル前提の作りを直すことになり、入れる人が自分の端末に合うものを選ぶ手間も増える。絞るだけで足りる。
+
+失うのは「配布用の APK を x86 のエミュレータで動かす」ことだけ。`expo run:android` の開発ビルドには影響しない。
