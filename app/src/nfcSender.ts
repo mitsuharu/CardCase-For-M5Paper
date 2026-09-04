@@ -72,7 +72,7 @@ async function hello(): Promise<DeviceInfo> {
  * 送り切れたら true、まだ残っているなら false を返す。
  * 電波が切れた場合は例外が飛ぶので、呼び出し側でかざし直してもらう。
  */
-async function transfer(image: Uint8Array, onProgress: (p: Progress) => void): Promise<void> {
+async function transfer(image: Uint8Array, onProgress: (p: Progress) => Promise<void>): Promise<void> {
   const info = await hello();
 
   if (image.length > info.maxImageSize) {
@@ -89,7 +89,7 @@ async function transfer(image: Uint8Array, onProgress: (p: Progress) => void): P
 
   const transferId = readU32(begin, 5);
   let offset = readU32(begin, 9);
-  onProgress({ sent: offset, total: image.length });
+  await onProgress({ sent: offset, total: image.length });
 
   // 本体が扱える大きさに合わせる。こちらの上限より小さいことがある。
   const chunkSize = Math.min(info.maxChunkSize, MAX_CHUNK_SIZE);
@@ -108,7 +108,7 @@ async function transfer(image: Uint8Array, onProgress: (p: Progress) => void): P
     if (status === Status.Accepted || status === Status.BadOffset) {
       // ずれていた場合も本体が続きの位置を返すので、そこから送り直す
       offset = readU32(response, 5);
-      onProgress({ sent: offset, total: image.length });
+      await onProgress({ sent: offset, total: image.length });
       continue;
     }
     throw new NfcError(`送信に失敗しました (${statusName(status)})`);
@@ -144,6 +144,25 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
   let stalled = 0;
   let lastError: unknown = null;
 
+  // シートの文言を進み具合に合わせて書き換える。
+  // 毎回書くと 1 通信ごとに往復が増えるので、変化が見える幅でだけ更新する。
+  let shownPercent = -1;
+  const report = async (p: Progress) => {
+    sent = p.sent;
+    onProgress(p);
+
+    if (!ios || p.total === 0) {
+      return;
+    }
+    const percent = Math.round((p.sent / p.total) * 100);
+    if (percent >= shownPercent + 5 || percent === 100) {
+      shownPercent = percent;
+      await NfcManager.setAlertMessageIOS(
+        percent >= 100 ? '送信中 100%' : `送信中 ${percent}% ・ 離さないでください`,
+      );
+    }
+  };
+
   await NfcManager.requestTechnology(tech, {
     alertMessage: 'M5Paper に近づけたまま待ってください',
   });
@@ -153,10 +172,7 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
       const before = sent;
 
       try {
-        await transfer(image, (p) => {
-          sent = p.sent;
-          onProgress(p);
-        });
+        await transfer(image, report);
 
         if (ios) {
           await NfcManager.setAlertMessageIOS('送信しました');
@@ -178,8 +194,6 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
       }
 
       if (ios) {
-        const percent = image.length > 0 ? Math.round((sent / image.length) * 100) : 0;
-        await NfcManager.setAlertMessageIOS(`送信中 ${percent}% ・ 離さないでください`);
         // シートは開いたまま、探し直すところからやり直す
         await NfcManager.restartTechnologyRequestIOS();
       }
