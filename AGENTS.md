@@ -243,7 +243,29 @@ npx expo run:ios --device   # 実機に入れる
 
 **NFC は実機でしか動かない。** シミュレータでは試せないので、必ず端末を繋いで確認する。Apple Developer Program（有料）も要る。NFC Tag Reading の capability は無料のプロビジョニングでは有効にできない。
 
-開発中はローカルビルド（`expo run:ios`）を使う。EAS のクラウドビルドは無料枠が月 15 回・低優先度キューで、直しては試す作業には向かない。配布するときに使う。
+開発中はローカルビルド（`expo run:ios`）を使う。
+
+### リリース用のビルドは EAS で焼く
+
+特定の Mac に依存させないため。手元で焼くと、その機械の Xcode・鍵・`ios/` の状態が成果物に混ざる。実際、`app.json` で bundle id を `net.mituwa.cardcase` に変えたのに `ios/` が古いままで、`com.mitsuharu.cardcase` のまま焼けていたことがある。**`expo run:ios` は `ios/` が既にあると `prebuild` を走らせない。**EAS は毎回まっさらな状態で `app.json` から作り直すので、これが起きない。
+
+リリースは多くないので無料枠で足りる。**開発中は手元の `expo run:ios` を使う。**キューを待っていられないため。
+
+配るときはタグを打つ。[App Release](.github/workflows/app-release.yml) が EAS に投げ、出来上がりを DeployGate に上げる。
+
+```bash
+git tag app-1.2.3 && git push origin app-1.2.3
+```
+
+**タグは `app-` で始める。**ファームウェアのリリース（`1.2.3`）と同じタグで動かさないため。
+
+Android の APK は GitHub Release にも置く。誰でも入れられるので端末の登録が要らない。**iOS は載せない。**Ad Hoc は登録済みの端末にしか入らないので誰も使えず、プロファイルに端末の UDID が焼き込まれている。
+
+証明書も Android の署名鍵も **EAS が預かる**。手元にもリポジトリにも鍵を置かない。版番号も EAS が数える（`eas.json` の `appVersionSource: remote` と `autoIncrement`）。
+
+**鍵は初回に手元で対話的に作る。**`npx eas-cli build --profile release --platform all` を一度手で走らせる。CI は非対話なので、鍵が無い状態から始めると落ちる。
+
+iOS の Ad Hoc は登録済みの端末にしか入らない。**端末を増やしたら `eas device:create` で登録してから焼き直す。**配布済みの ipa に後から端末は足せない。
 
 ## 今後の予定
 
