@@ -32,8 +32,13 @@ enum class Mode
 DeviceProfile profile;
 Menu menu;
 
+// 画像を受け取ると SD の中身が変わるので、一覧を作り直す必要がある
+bool imageListStale = false;
+
 void drawHeader();
 void halt(const String &message);
+void buildMenu();
+void onSelectItem(const MenuItem &item);
 Mode mode = Mode::Browsing;
 unsigned long viewingUntil = 0;
 
@@ -160,7 +165,19 @@ void returnToMenu()
 
   M5.Display.fillScreen(TFT_WHITE);
   drawHeader();
-  menu.render();
+
+  if (imageListStale)
+  {
+    // 受け取った画像が増えているので作り直す。begin() が描画まで行う。
+    buildMenu();
+    M5.Display.println("");
+    menu.begin(profile, M5.Display.getCursorY(), onSelectItem);
+    imageListStale = false;
+  }
+  else
+  {
+    menu.render();
+  }
 
   M5.Display.endWrite();
 
@@ -281,6 +298,30 @@ bool collectImages()
   return true;
 }
 
+/**
+ * 一覧を作り直す。
+ *
+ * 画像を受け取ると SD の中身が変わるので、起動時に作ったままだと
+ * 増えた画像が出てこない。
+ */
+void buildMenu()
+{
+  menu.clear();
+
+  if (Storage::isAvailable())
+  {
+    collectImages();
+  }
+
+  // 受け取る導線は末尾ではなく先頭に置く。
+  // 画像が増えても位置が変わらず、探さずに選べる。
+  menu.addItem(MenuItemKind::Transfer, "[WiFi]", "");
+  if (profile.hasNfc)
+  {
+    menu.addItem(MenuItemKind::Nfc, "[NFC]", "");
+  }
+}
+
 void setup()
 {
   auto cfg = M5.config();
@@ -314,23 +355,12 @@ void setup()
   // 電子ペーパーは endWrite のたびに画面を更新し、M5PaperColor では
   // 1 回あたり十数秒かかる。進捗を逐一表示すると起動が数分になるので、
   // SD の処理を先に終わらせてから、画面は最後に 1 回だけ描く。
-  // SD が無くても WiFi で画像を受け取って表示はできるので、ここでは止めない
-  if (Storage::begin())
-  {
-    collectImages();
-  }
-  else
+  // SD が無くても WiFi や NFC で画像を受け取って表示はできるので、ここでは止めない
+  if (!Storage::begin())
   {
     M5.Log(esp_log_level_t::ESP_LOG_WARN, "SD card is not available\n");
   }
-
-  // WiFi で受け取る導線を先頭に置く。
-  // 画像が 1 枚も無くてもここから追加できるので、halt させない。
-  menu.addItem(MenuItemKind::Transfer, "[WiFi]", "");
-  if (profile.hasNfc)
-  {
-    menu.addItem(MenuItemKind::Nfc, "[NFC]", "");
-  }
+  buildMenu();
 
   if (!profile.isOperable())
   {
@@ -367,6 +397,7 @@ void loop()
       String path = WebTransfer::receivedImagePath();
       if (path.length() > 0)
       {
+        imageListStale = true;
         WebTransfer::releaseReceivedImage();
         showImage(path);
       }
@@ -404,6 +435,7 @@ void loop()
       String path = NfcTransfer::receivedImagePath();
       if (path.length() > 0)
       {
+        imageListStale = true;
         NfcTransfer::releaseReceivedImage();
         showImage(path);
       }

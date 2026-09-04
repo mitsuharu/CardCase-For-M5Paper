@@ -46,6 +46,9 @@ public:
 
     int itemCount() const { return _itemCount; }
 
+    /// 項目を空にする。SD の中身が変わったときに作り直すために使う。
+    void clear() { _itemCount = 0; }
+
     /// プロファイルに合わせて 1 ページの件数を決め、一覧を描画する
     void begin(const DeviceProfile &profile, int topY, SelectHandler onSelect);
 
