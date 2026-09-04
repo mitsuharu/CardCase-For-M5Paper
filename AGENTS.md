@@ -261,7 +261,7 @@ git tag app-1.2.3 && git push origin app-1.2.3
 
 証明書も Android の署名鍵も **EAS が預かる**。手元にもリポジトリにも鍵を置かない。版番号も EAS が数える（`eas.json` の `appVersionSource: remote` と `autoIncrement`）。
 
-**鍵は初回に手元で対話的に作る。**`npx eas build --profile release --platform all` を一度手で走らせる。CI は非対話なので、鍵が無い状態から始めると落ちる。
+**鍵は初回に手元で対話的に作る。**`npx eas-cli build --profile release --platform all` を一度手で走らせる。CI は非対話なので、鍵が無い状態から始めると落ちる。
 
 iOS の Ad Hoc は登録済みの端末にしか入らない。**端末を増やしたら `eas device:create` で登録してから焼き直す。**配布済みの ipa に後から端末は足せない。
 

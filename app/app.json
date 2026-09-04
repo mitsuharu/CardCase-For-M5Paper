@@ -26,7 +26,10 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "net.mituwa.cardcase"
+      "package": "net.mituwa.cardcase",
+      "permissions": [
+        "android.permission.NFC"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,6 +42,11 @@
         }
       ]
     ],
-    "scheme": "cardcase"
+    "scheme": "cardcase",
+    "extra": {
+      "eas": {
+        "projectId": "03c8a4d2-9ee7-4f5e-941f-3766154a59a3"
+      }
+    }
   }
 }

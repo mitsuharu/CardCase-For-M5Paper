@@ -78,9 +78,9 @@ open ios/CardCase.xcworkspace
 
 ```bash
 cd app
-npx eas login
-npx eas device:create
-npx eas build --profile release --platform all
+npx eas-cli login
+npx eas-cli device:create
+npx eas-cli build --profile release --platform all
 ```
 
 Ad Hoc は登録済みの端末にしか入らない。`device:create` では Apple Developer に登録済みの端末を取り込める。
@@ -114,8 +114,17 @@ CI を通さず試したいときは、同じことを手で実行する。
 
 ```bash
 cd app
-npx eas build --profile release --platform all
-npx eas build:download --platform ios --latest --output build/CardCase.ipa
+npx eas-cli build --profile release --platform ios
+```
+
+終わると配布ページの URL が出る。**そのまま QR で入れられる**ので、自分の端末で試すだけならここで終わり。
+
+DeployGate にも置くなら、成果物を落としてから上げる。`build:download` はシミュレータ用のビルドを落とすコマンドなので、ipa / apk には使えない。
+
+```bash
+mkdir -p build
+curl -sSL -o build/CardCase.ipa "$(npx eas-cli build:list --json --non-interactive --limit 1 --platform ios \
+  | jq -r '.[0].artifacts.applicationArchiveUrl // .[0].artifacts.buildUrl')"
 ./scripts/upload-deploygate.sh build/CardCase.ipa "直した内容"
 ```
 
@@ -126,7 +135,7 @@ npx eas build:download --platform ios --latest --output build/CardCase.ipa
 UDID を登録してから、**焼き直す**。
 
 ```bash
-npx eas device:create
+npx eas-cli device:create
 ```
 
 配布済みの ipa に後から端末は足せない。プロファイルに焼き込まれているため。
