@@ -259,6 +259,8 @@ git tag app-1.2.3 && git push origin app-1.2.3
 
 **タグは `app-` で始める。**ファームウェアのリリース（`1.2.3`）と同じタグで動かさないため。
 
+Android の APK は GitHub Release にも置く。誰でも入れられるので端末の登録が要らない。**iOS は載せない。**Ad Hoc は登録済みの端末にしか入らないので誰も使えず、プロファイルに端末の UDID が焼き込まれている。
+
 証明書も Android の署名鍵も **EAS が預かる**。手元にもリポジトリにも鍵を置かない。版番号も EAS が数える（`eas.json` の `appVersionSource: remote` と `autoIncrement`）。
 
 **鍵は初回に手元で対話的に作る。**`npx eas-cli build --profile release --platform all` を一度手で走らせる。CI は非対話なので、鍵が無い状態から始めると落ちる。

@@ -21,6 +21,10 @@ on:
         required: false
         type: string
 
+# APK を Release に添付する
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,6 +35,9 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # 前回のアプリのリリースを探すのにタグの履歴が要る
+        fetch-depth: 0
 
     - name: Set up Node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -58,7 +65,22 @@ jobs:
           --json > builds.json
         jq -r '.[] | "\(.platform) \(.artifacts.buildUrl // .artifacts.applicationArchiveUrl)"' builds.json
 
-    # 成果物を落として DeployGate に渡す。
+    # 成果物を落とす。DeployGate と GitHub Release の両方から使う。
+    - name: Download artifacts
+      run: |
+        mkdir -p dist
+        jq -r '.[] | "\(.platform)\t\(.artifacts.buildUrl // .artifacts.applicationArchiveUrl)"' builds.json \
+        | while IFS=$'\t' read -r platform url; do
+            case "$platform" in
+              IOS) file=CardCase.ipa ;;
+              ANDROID) file=CardCase.apk ;;
+              *) echo "知らない対象: $platform" >&2; exit 1 ;;
+            esac
+            echo "==> $platform を落とす"
+            curl -sSL --fail-with-body -o "dist/$file" "$url"
+          done
+        ls -la dist
+
     # EAS の配布ページでも配れるが、iOS と Android を 1 か所にまとめたいので通す。
     - name: Upload to DeployGate
       env:
@@ -70,27 +92,64 @@ jobs:
           MESSAGE="${GITHUB_REF_NAME} (${GITHUB_SHA::7})"
         fi
 
-        jq -r '.[] | "\(.platform)\t\(.artifacts.buildUrl // .artifacts.applicationArchiveUrl)"' builds.json \
-        | while IFS=$'\t' read -r platform url; do
-            case "$platform" in
-              IOS) file=CardCase.ipa ;;
-              ANDROID) file=CardCase.apk ;;
-              *) echo "知らない対象: $platform" >&2; exit 1 ;;
-            esac
+        for file in dist/*; do
+          echo "==> $file を上げる"
+          response=$(curl -sS --fail-with-body \
+            -F "file=@$file" \
+            -F "token=$DEPLOYGATE_API_TOKEN" \
+            -F "message=$MESSAGE" \
+            "https://deploygate.com/api/users/$DEPLOYGATE_USER/apps")
 
-            echo "==> $platform を落とす"
-            curl -sSL --fail-with-body -o "$file" "$url"
+          if echo "$response" | jq -e '.error == true' > /dev/null; then
+            echo "失敗した: $(echo "$response" | jq -r '.message')" >&2
+            exit 1
+          fi
+        done
 
-            echo "==> $file を上げる"
-            response=$(curl -sS --fail-with-body \
-              -F "file=@$file" \
-              -F "token=$DEPLOYGATE_API_TOKEN" \
-              -F "message=$MESSAGE" \
-              "https://deploygate.com/api/users/$DEPLOYGATE_USER/apps")
+    # APK だけを公開する。誰でも入れられるので Release に置く意味がある。
+    #
+    # ipa は載せない。Ad Hoc は登録済みの端末にしか入らないので誰も使えず、
+    # プロファイルに端末の UDID が焼き込まれている。
+    - name: Publish APK to GitHub Release
+      if: startsWith(github.ref, 'refs/tags/app-')
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        VERSION="${GITHUB_REF_NAME#app-}"
 
-            if echo "$response" | jq -e '.error == true' > /dev/null; then
-              echo "失敗した: $(echo "$response" | jq -r '.message')" >&2
-              exit 1
-            fi
-            echo "上げた: $(echo "$response" | jq -r '.results.package_name // empty')"
-          done
+        cat > notes.md <<'EOF'
+        M5Paper に NFC で画像を送るアプリです。
+
+        ## Android
+
+        `CardCase.apk` を端末に落として開いてください。
+        提供元不明のアプリの許可を求められるので、許可すると入ります。
+
+        ## iOS
+
+        端末の UDID 登録が要るため、ここには置いていません。
+        入れたい端末があれば連絡してください。
+
+        ## 使い方
+
+        アプリで画像を選び、本体で `[NFC]` を選んでからかざしてください。
+        本体側が `[NFC]` を表示している間だけ受け取ります。
+
+        EOF
+
+        # --generate-notes は前回のリリース以降の PR を並べる。
+        # ファームウェアのリリースと同じリポジトリなので、起点を指定しないと
+        # 直前のファームウェアのリリースからの差分になってしまう。
+        PREV=$(git tag -l 'app-*' --sort=-v:refname | sed -n '2p')
+        START=""
+        if [ -n "$PREV" ]; then
+          START="--notes-start-tag $PREV"
+        fi
+
+        gh release create "$GITHUB_REF_NAME" \
+          --title "App $VERSION" \
+          --notes-file notes.md \
+          --generate-notes \
+          $START \
+          --target "${{ github.sha }}" \
+          dist/CardCase.apk

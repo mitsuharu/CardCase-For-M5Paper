@@ -68,6 +68,8 @@ open ios/CardCase.xcworkspace
 
 **タグを打てば、焼いて配るところまで自動で終わる。**[App Release](../.github/workflows/app-release.yml) が EAS に投げ、出来上がりを DeployGate に上げる。
 
+**Android は GitHub Release にも APK を置く。**誰でも入れられるので、端末の登録が要らない。iOS は載せない。Ad Hoc は登録済みの端末にしか入らないので誰も使えず、プロファイルに端末の UDID が焼き込まれているため。
+
 配り口は 2 つあり、どちらからでも入れられる。**EAS の配布ページだけでも配れる**（`eas.json` を `distribution: internal` にしてあるので、ビルドが終わると QR 付きのページができる。iOS は itms-services で直接入る）。DeployGate は必須ではないが、他の案件と同じ場所にまとめたいので通している。
 
 | | EAS の配布ページ | DeployGate |
