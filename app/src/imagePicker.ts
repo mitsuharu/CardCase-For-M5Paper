@@ -2,6 +2,8 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 
+import { fitToScreen } from './fit';
+
 /** 送る画像。バイト列と、確認用の表示先。 */
 export type PreparedImage = {
   bytes: Uint8Array;
@@ -29,18 +31,8 @@ export async function prepareImage(
   // 元の大きさを知るために一度だけ読む
   const source = await ImageManipulator.ImageManipulator.manipulate(uri).renderAsync();
 
-  // 本体は画像の向きに応じて画面を回すので、実際に表示される枠は
-  // 画像が横長か縦長かで変わる。回転そのものは本体側に任せる。
-  const screenIsLandscape = screenWidth > screenHeight;
-  const imageIsLandscape = source.width > source.height;
-  const boxWidth = imageIsLandscape === screenIsLandscape ? screenWidth : screenHeight;
-  const boxHeight = imageIsLandscape === screenIsLandscape ? screenHeight : screenWidth;
-
-  // 縮小は一度だけ。画面より大きくしても表示に使えず、
-  // 画面より小さくすると無駄に粗くなるので、ここが唯一の正解になる。
-  const scale = Math.min(1, boxWidth / source.width, boxHeight / source.height);
-  const width = Math.max(1, Math.round(source.width * scale));
-  const height = Math.max(1, Math.round(source.height * scale));
+  // 縮小は一度だけ。大きさの決め方は fit.ts にある。
+  const { width, height } = fitToScreen(source.width, source.height, screenWidth, screenHeight);
 
   const rendered = await ImageManipulator.ImageManipulator.manipulate(uri)
     .resize({ width, height })

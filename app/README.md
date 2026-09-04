@@ -172,6 +172,29 @@ npx eas-cli device:create
 
 **`src/protocol.ts` を変えたら、本体側も直してください。** とくに CRC-32 は値が食い違うと転送が必ず失敗します。決まりは [NFC 転送プロトコル](../docs/nfc-protocol.md) にまとめてあります。
 
+食い違いは機械が見ます。CI でも動きますが、手元でも確かめられます。
+
+```bash
+npm run typecheck        # 型
+npm test                 # 単体の試験
+npm run check-protocol   # 本体との照合
+npm run bundle           # Metro で束ねられるか
+```
+
+## 試験
+
+実機の API を使わない計算と判断は、別のファイルに出して試験しています。
+
+| ファイル | 中身 |
+| --- | --- |
+| `src/protocol.ts` | バイト列の読み書き、CRC-32 |
+| `src/fit.ts` | 画面に収める大きさの計算 |
+| `src/chunking.ts` | 1 回に送る大きさ、かざし直しの判断 |
+
+`node --test` で `.ts` をそのまま動かすので、試験の道具は足していません。**`src/` から `src/` を読むときは拡張子まで書いてください**（`./protocol.ts`）。Metro は省略しても解決しますが、node は解決しません。
+
+`npm run bundle` は Metro で束ねられるかを見ます。**Android の debug のビルドは JS を束ねない**ので、import の解決ミスはそちらでは落ちません。
+
 ## 動かないとき
 
 | 症状 | 見るところ |

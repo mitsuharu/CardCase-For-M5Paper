@@ -2,8 +2,15 @@ import NfcManager, { NfcTech } from 'react-native-nfc-manager';
 import { Platform } from 'react-native';
 
 import {
+  chunkLimitFromTransceive,
+  effectiveChunkSize,
+  isFatal,
+  nextStalledCount,
+  shouldGiveUp,
+} from './chunking'
+import { NfcCancelled, NfcError } from './errors'
+import {
   Command,
-  HEADER_SIZE,
   MAX_CHUNK_SIZE,
   Status,
   crc32,
@@ -28,10 +35,7 @@ export type DeviceInfo = {
   height: number;
 };
 
-export class NfcError extends Error {}
-
-/** 利用者が自分でやめたとき。失敗として扱わない。 */
-export class NfcCancelled extends Error {}
+export { NfcCancelled, NfcError }
 
 let cancelRequested = false;
 
@@ -84,8 +88,7 @@ async function deviceChunkLimit(): Promise<number> {
     if (!max || max <= 0) {
       return MAX_CHUNK_SIZE;
     }
-    // 送るのは見出しと位置を含めた全体なので、その分を引く
-    return Math.max(1, Math.min(MAX_CHUNK_SIZE, max - (HEADER_SIZE + 4 + 4)));
+    return chunkLimitFromTransceive(max);
   } catch {
     return MAX_CHUNK_SIZE;
   }
@@ -136,8 +139,7 @@ async function transfer(image: Uint8Array, onProgress: (p: Progress) => Promise<
   let offset = readU32(begin, 9);
   await onProgress({ sent: offset, total: image.length });
 
-  // 本体と端末のどちらの上限にも収まる大きさにする
-  const chunkSize = Math.min(info.maxChunkSize, MAX_CHUNK_SIZE, await deviceChunkLimit());
+  const chunkSize = effectiveChunkSize(info.maxChunkSize, await deviceChunkLimit());
 
   while (offset < image.length) {
     const length = Math.min(chunkSize, image.length - offset);
@@ -244,13 +246,12 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
         lastError = e;
 
         // 相手が違う、受け取る画面でないなど、繋ぎ直しても直らないものは即やめる
-        if (e instanceof NfcError && sent === 0) {
+        if (isFatal(e, sent)) {
           throw e;
         }
 
-        // 一度も進まない状態が続くなら、繋がっていないか設定が違う
-        stalled = sent > before ? 0 : stalled + 1;
-        if (stalled >= 3) {
+        stalled = nextStalledCount(sent, before, stalled);
+        if (shouldGiveUp(stalled)) {
           break;
         }
       }
