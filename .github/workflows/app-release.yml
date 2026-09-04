@@ -50,7 +50,7 @@ jobs:
         EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       run: |
         PLATFORM="${{ inputs.platform || 'all' }}"
-        npx eas-cli build \
+        npx eas-cli@23.2.0 build \
           --profile release \
           --platform "$PLATFORM" \
           --non-interactive \

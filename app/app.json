@@ -10,7 +10,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "net.mituwa.cardcase",
       "infoPlist": {
-        "NFCReaderUsageDescription": "M5Paper に画像を送るために NFC を使います。"
+        "NFCReaderUsageDescription": "M5Paper に画像を送るために NFC を使います。",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {
         "com.apple.developer.nfc.readersession.formats": [
