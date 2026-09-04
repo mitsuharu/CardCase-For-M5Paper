@@ -16,6 +16,7 @@ enum class MenuItemKind
 {
     Image,    // SD 内の画像。value は画像のパス
     Transfer, // WiFi で画像を受け取る
+    Nfc,      // NFC で画像を受け取る
 };
 
 /// 一覧に載せる 1 項目
@@ -44,6 +45,9 @@ public:
     bool addItem(MenuItemKind kind, const String &title, const String &value);
 
     int itemCount() const { return _itemCount; }
+
+    /// 項目を空にする。SD の中身が変わったときに作り直すために使う。
+    void clear() { _itemCount = 0; }
 
     /// プロファイルに合わせて 1 ページの件数を決め、一覧を描画する
     void begin(const DeviceProfile &profile, int topY, SelectHandler onSelect);

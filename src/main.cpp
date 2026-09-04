@@ -5,6 +5,7 @@
 #include <ImageFile.h>
 #include <Menu.h>
 #include <WebTransfer.h>
+#include <NfcTransfer.h>
 
 // M5Unified が機種を自動判定できなかったときの保険。
 // platformio.ini の env ごとに -DCARDCASE_FALLBACK_BOARD で指定する。
@@ -25,13 +26,19 @@ enum class Mode
   Browsing,     // 一覧
   Viewing,      // 画像
   Transferring, // WiFi で画像を待っている
+  Receiving,    // NFC で画像を待っている
 };
 
 DeviceProfile profile;
 Menu menu;
 
+// 画像を受け取ると SD の中身が変わるので、一覧を作り直す必要がある
+bool imageListStale = false;
+
 void drawHeader();
 void halt(const String &message);
+void buildMenu();
+void onSelectItem(const MenuItem &item);
 Mode mode = Mode::Browsing;
 unsigned long viewingUntil = 0;
 
@@ -158,7 +165,19 @@ void returnToMenu()
 
   M5.Display.fillScreen(TFT_WHITE);
   drawHeader();
-  menu.render();
+
+  if (imageListStale)
+  {
+    // 受け取った画像が増えているので作り直す。begin() が描画まで行う。
+    buildMenu();
+    M5.Display.println("");
+    menu.begin(profile, M5.Display.getCursorY(), onSelectItem);
+    imageListStale = false;
+  }
+  else
+  {
+    menu.render();
+  }
 
   M5.Display.endWrite();
 
@@ -205,12 +224,45 @@ void startTransfer()
   mode = Mode::Transferring;
 }
 
+/// NFC で画像を受け取る状態に入る
+void startNfc()
+{
+#ifdef CARDCASE_HAS_NFC
+  if (!NfcTransfer::begin(profile))
+  {
+    halt("failed to start NFC.");
+  }
+
+  M5.Display.setRotation(static_cast<uint_fast8_t>(DeviceRotation::Up));
+  if (M5.Display.isEPD())
+  {
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
+  }
+
+  M5.Display.startWrite();
+  M5.Display.fillScreen(TFT_WHITE);
+  drawHeader();
+  M5.Display.setTextSize(profile.menuTextSize / 2);
+  M5.Display.setCursor(profile.margin(), M5.Display.getCursorY() + profile.margin());
+  M5.Display.print("Hold your phone here");
+  M5.Display.endWrite();
+  M5.Display.waitDisplay();
+
+  mode = Mode::Receiving;
+#endif
+}
+
 /// 一覧で選ばれたときの処理
 void onSelectItem(const MenuItem &item)
 {
   if (item.kind == MenuItemKind::Transfer)
   {
     startTransfer();
+    return;
+  }
+  if (item.kind == MenuItemKind::Nfc)
+  {
+    startNfc();
     return;
   }
   showImage(item.value);
@@ -246,6 +298,30 @@ bool collectImages()
   return true;
 }
 
+/**
+ * 一覧を作り直す。
+ *
+ * 画像を受け取ると SD の中身が変わるので、起動時に作ったままだと
+ * 増えた画像が出てこない。
+ */
+void buildMenu()
+{
+  menu.clear();
+
+  if (Storage::isAvailable())
+  {
+    collectImages();
+  }
+
+  // 受け取る導線は末尾ではなく先頭に置く。
+  // 画像が増えても位置が変わらず、探さずに選べる。
+  menu.addItem(MenuItemKind::Transfer, "[WiFi]", "");
+  if (profile.hasNfc)
+  {
+    menu.addItem(MenuItemKind::Nfc, "[NFC]", "");
+  }
+}
+
 void setup()
 {
   auto cfg = M5.config();
@@ -279,19 +355,12 @@ void setup()
   // 電子ペーパーは endWrite のたびに画面を更新し、M5PaperColor では
   // 1 回あたり十数秒かかる。進捗を逐一表示すると起動が数分になるので、
   // SD の処理を先に終わらせてから、画面は最後に 1 回だけ描く。
-  // SD が無くても WiFi で画像を受け取って表示はできるので、ここでは止めない
-  if (Storage::begin())
-  {
-    collectImages();
-  }
-  else
+  // SD が無くても WiFi や NFC で画像を受け取って表示はできるので、ここでは止めない
+  if (!Storage::begin())
   {
     M5.Log(esp_log_level_t::ESP_LOG_WARN, "SD card is not available\n");
   }
-
-  // WiFi で受け取る導線を先頭に置く。
-  // 画像が 1 枚も無くてもここから追加できるので、halt させない。
-  menu.addItem(MenuItemKind::Transfer, "[WiFi]", "");
+  buildMenu();
 
   if (!profile.isOperable())
   {
@@ -328,6 +397,7 @@ void loop()
       String path = WebTransfer::receivedImagePath();
       if (path.length() > 0)
       {
+        imageListStale = true;
         WebTransfer::releaseReceivedImage();
         showImage(path);
       }
@@ -351,6 +421,44 @@ void loop()
     delay(5);
     return;
   }
+
+#ifdef CARDCASE_HAS_NFC
+  if (mode == Mode::Receiving)
+  {
+    NfcTransfer::update();
+
+    if (NfcTransfer::hasReceivedImage())
+    {
+      NfcTransfer::end();
+
+      // SD に保存できていればファイルから、無ければメモリから表示する
+      String path = NfcTransfer::receivedImagePath();
+      if (path.length() > 0)
+      {
+        imageListStale = true;
+        NfcTransfer::releaseReceivedImage();
+        showImage(path);
+      }
+      else
+      {
+        size_t size = 0;
+        const uint8_t *image = NfcTransfer::receivedImage(size);
+        M5Helper::drawImageFromMemory(image, size, profile);
+        NfcTransfer::releaseReceivedImage();
+
+        mode = Mode::Viewing;
+        viewingUntil = millis() + VIEWING_TIMEOUT_MS;
+      }
+    }
+    else if (wasReturnPressed())
+    {
+      NfcTransfer::end();
+      clearScreen();
+      returnToMenu();
+    }
+    return;
+  }
+#endif
 
   if (mode == Mode::Viewing)
   {

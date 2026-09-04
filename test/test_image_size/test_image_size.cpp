@@ -107,9 +107,25 @@ void test_returns_false_for_broken_input()
     }
 }
 
+void test_extension_is_decided_by_content()
+{
+    // 受け取った画像には名前が付いてこないので中身で判断する
+    std::vector<uint8_t> jpeg = makeJpeg(640, 480);
+    std::vector<uint8_t> png = makePng(640, 480);
+
+    TEST_ASSERT_EQUAL_STRING(".jpg", ImageFile::extensionFor(jpeg.data(), jpeg.size()));
+    TEST_ASSERT_EQUAL_STRING(".png", ImageFile::extensionFor(png.data(), png.size()));
+
+    // どちらでもないものは受け付けない
+    const uint8_t garbage[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
+    TEST_ASSERT_NULL(ImageFile::extensionFor(garbage, sizeof(garbage)));
+    TEST_ASSERT_NULL(ImageFile::extensionFor(nullptr, 0));
+}
+
 int runUnityTests(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_extension_is_decided_by_content);
     RUN_TEST(test_reads_jpeg_size);
     RUN_TEST(test_reads_jpeg_size_after_large_exif);
     RUN_TEST(test_reads_png_size);

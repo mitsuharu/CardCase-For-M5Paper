@@ -97,6 +97,28 @@ namespace
 
 namespace ImageFile
 {
+    const char *extensionFor(const uint8_t *data, size_t size)
+    {
+        if (data == nullptr || size < 8)
+        {
+            return nullptr;
+        }
+        if (data[0] == 0xFF && data[1] == 0xD8)
+        {
+            return ".jpg";
+        }
+
+        static const uint8_t kPngSignature[] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        for (size_t i = 0; i < sizeof(kPngSignature); i++)
+        {
+            if (data[i] != kPngSignature[i])
+            {
+                return nullptr;
+            }
+        }
+        return ".png";
+    }
+
     bool imageSize(const uint8_t *data, size_t size, int *width, int *height)
     {
         if (data == nullptr || width == nullptr || height == nullptr || size < 8)
