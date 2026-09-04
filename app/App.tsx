@@ -57,7 +57,14 @@ export default function App() {
         return;
       }
       setBusy(true);
-      setImage(await prepareImage(uri, SCREEN_WIDTH, SCREEN_HEIGHT, MAX_BYTES));
+      const prepared = await prepareImage(uri, SCREEN_WIDTH, SCREEN_HEIGHT, MAX_BYTES);
+      setImage(prepared);
+
+      // 縮めても目安を超えた場合は、送れるが時間がかかることを伝える
+      if (prepared.bytes.length > MAX_BYTES) {
+        const seconds = Math.ceil(prepared.bytes.length / 1024 / 5.5);
+        setMessage(`この画像は大きめです。送信に ${seconds} 秒ほどかかります。`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : '画像を読み込めませんでした');
     } finally {
@@ -131,7 +138,8 @@ export default function App() {
           <View style={styles.preview}>
             <Image source={{ uri: image.uri }} style={styles.image} resizeMode="contain" />
             <Text style={styles.caption}>
-              {image.width} x {image.height} ・ {Math.round(image.bytes.length / 1024)} KB
+              {image.width} x {image.height} ・ {Math.round(image.bytes.length / 1024)} KB ・
+              約 {Math.ceil(image.bytes.length / 1024 / 5.5)} 秒
             </Text>
           </View>
         )}

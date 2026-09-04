@@ -26,46 +26,65 @@ export async function prepareImage(
   screenHeight: number,
   maxBytes: number,
 ): Promise<PreparedImage> {
+  // 元の大きさを知るために一度だけ読む
+  const source = await ImageManipulator.ImageManipulator.manipulate(uri).renderAsync();
+  const sourceWidth = source.width;
+  const sourceHeight = source.height;
+
+  // 本体は画像の向きに応じて画面を回すので、実際に表示される枠は
+  // 画像が横長か縦長かで変わる。その枠に収まる大きさを出発点にする。
+  // 回転そのものは本体側に任せる。
   const screenIsLandscape = screenWidth > screenHeight;
+  const imageIsLandscape = sourceWidth > sourceHeight;
+  const boxWidth = imageIsLandscape === screenIsLandscape ? screenWidth : screenHeight;
+  const boxHeight = imageIsLandscape === screenIsLandscape ? screenHeight : screenWidth;
+  const baseScale = Math.min(1, boxWidth / sourceWidth, boxHeight / sourceHeight);
 
-  // 本体は白黒 4 階調なので、色や細かい階調は残しても表示に出ない。
-  // NFC は速くないため、送る量を減らすほうが効く。
-  let quality = 0.6;
-  let scale = 1;
+  // 本体は白黒 4 階調しか出せないので、品質を落としても見た目に響かない。
+  // NFC は速くないため、まず品質で削り、足りなければ小さくする。
+  const scales = [1, 0.8, 0.65, 0.5, 0.4];
+  const qualities = [0.6, 0.45, 0.3, 0.2, 0.1];
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const context = ImageManipulator.ImageManipulator.manipulate(uri);
-    const image = await context.renderAsync();
+  let smallest: PreparedImage | null = null;
 
-    const imageIsLandscape = image.width > image.height;
-    const boxWidth = imageIsLandscape === screenIsLandscape ? screenWidth : screenHeight;
-    const boxHeight = imageIsLandscape === screenIsLandscape ? screenHeight : screenWidth;
+  for (const scale of scales) {
+    const width = Math.max(1, Math.round(sourceWidth * baseScale * scale));
+    const height = Math.max(1, Math.round(sourceHeight * baseScale * scale));
 
-    const fit = Math.min(1, boxWidth / image.width, boxHeight / image.height) * scale;
-    const width = Math.max(1, Math.round(image.width * fit));
-    const height = Math.max(1, Math.round(image.height * fit));
+    // 縮小は倍率ごとに一度だけ。品質だけ変えて試すほうが速い。
+    const rendered = await ImageManipulator.ImageManipulator.manipulate(uri)
+      .resize({ width, height })
+      .renderAsync();
 
-    const resized = ImageManipulator.ImageManipulator.manipulate(uri).resize({ width, height });
-    const rendered = await resized.renderAsync();
-    const saved = await rendered.saveAsync({
-      compress: quality,
-      format: ImageManipulator.SaveFormat.JPEG,
-    });
+    for (const quality of qualities) {
+      const saved = await rendered.saveAsync({
+        compress: quality,
+        format: ImageManipulator.SaveFormat.JPEG,
+      });
+      const bytes = await new File(saved.uri).bytes();
+      const candidate: PreparedImage = {
+        bytes,
+        uri: saved.uri,
+        width: saved.width,
+        height: saved.height,
+      };
 
-    const bytes = await new File(saved.uri).bytes();
-    if (bytes.length <= maxBytes) {
-      return { bytes, uri: saved.uri, width: saved.width, height: saved.height };
-    }
-
-    // まず品質を落とし、それでも収まらなければ小さくする
-    if (quality > 0.3) {
-      quality -= 0.1;
-    } else {
-      scale *= 0.75;
+      if (bytes.length <= maxBytes) {
+        return candidate;
+      }
+      // 収まらなくても、一番小さかったものは覚えておく
+      if (!smallest || bytes.length < smallest.bytes.length) {
+        smallest = candidate;
+      }
     }
   }
 
-  throw new Error('この画像は大きすぎて送れません');
+  // ここまで来ることはまずないが、送れないと突き放すより
+  // 一番小さくできたもので進めるほうが役に立つ
+  if (smallest) {
+    return smallest;
+  }
+  throw new Error('この画像を読み込めませんでした');
 }
 
 export async function pickImage(): Promise<string | null> {
