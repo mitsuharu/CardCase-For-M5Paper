@@ -45,6 +45,8 @@ jobs:
       with:
         distribution: temurin
         java-version: 17
+        # 依存の取得だけで数分かかる。2 回目からは効く。
+        cache: gradle
 
     # android/ は prebuild で作り直されるので、生成できるところから確かめる。
     # app.json やプラグインの書き間違いはここで落ちる。
