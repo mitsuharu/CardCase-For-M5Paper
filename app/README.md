@@ -123,7 +123,9 @@ git tag app-1.2.3
 git push origin app-1.2.3
 ```
 
-メモを添えたいときや片方だけ焼きたいときは、Actions の画面から **App Release** を手動で実行する。対象（`all` / `ios` / `android`）とメモを指定できる。
+メモを添えたいときや片方だけ焼きたいときは、Actions の画面から **App Release** を手動で実行する。対象（`all` / `ios` / `android`）・バージョン・メモを指定できる。
+
+**手動実行では、バージョンを入れないと GitHub Release は作られない。**タグが無いので作りようがないため。焼いて DeployGate に上げるところまでで止まる。試すときはこれでいい。Release も作るならバージョン（例: `1.2.3`）を入れる。タグは `gh` が作る。
 
 版番号は EAS が数えている（`eas.json` の `appVersionSource: remote` と `autoIncrement`）。手で上げなくていい。`app.json` の `version` は、人に見せる版として節目で上げる。
 
