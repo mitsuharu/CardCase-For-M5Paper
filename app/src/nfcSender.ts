@@ -30,6 +30,23 @@ export type DeviceInfo = {
 
 export class NfcError extends Error {}
 
+/** 利用者が自分でやめたとき。失敗として扱わない。 */
+export class NfcCancelled extends Error {}
+
+let cancelRequested = false;
+
+/**
+ * 送信をやめる。
+ *
+ * iOS はシートに「キャンセル」があるが、Android は何も出ないので
+ * アプリ側にやめる手段が要る。繋ぎ直しをくり返す作りなので、
+ * 印を立てるだけでは止まらない。通信そのものも打ち切る。
+ */
+export function cancelSending(): void {
+  cancelRequested = true;
+  NfcManager.cancelTechnologyRequest().catch(() => undefined);
+}
+
 /**
  * NFC でフレームを 1 往復させる。
  *
@@ -166,10 +183,19 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
   let stalled = 0;
   let lastError: unknown = null;
 
+  cancelRequested = false;
+
+  // 前回の接続が残っていると次が始められない。
+  // 送信中に画面を離れるなどで残ることがあるので、始める前に必ず落とす。
+  await NfcManager.cancelTechnologyRequest().catch(() => undefined);
+
   // シートの文言を進み具合に合わせて書き換える。
   // 毎回書くと 1 通信ごとに往復が増えるので、変化が見える幅でだけ更新する。
   let shownPercent = -1;
   const report = async (p: Progress) => {
+    if (cancelRequested) {
+      throw new NfcCancelled('送信をやめました');
+    }
     sent = p.sent;
     onProgress(p);
 
@@ -206,6 +232,9 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
         }
         return;
       } catch (e) {
+        if (cancelRequested || e instanceof NfcCancelled) {
+          throw new NfcCancelled('送信をやめました');
+        }
         lastError = e;
 
         // 相手が違う、大きすぎるなど、繋ぎ直しても直らないものは即やめる
@@ -218,6 +247,10 @@ export async function sendImage(image: Uint8Array, onProgress: (p: Progress) => 
         if (stalled >= 3) {
           break;
         }
+      }
+
+      if (cancelRequested) {
+        throw new NfcCancelled('送信をやめました');
       }
 
       if (ios) {

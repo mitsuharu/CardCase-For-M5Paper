@@ -15,7 +15,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import NfcManager from 'react-native-nfc-manager';
 
 import { pickImage, prepareImage, takePhoto, type PreparedImage } from './src/imagePicker';
-import { isSupported, sendImage, type Progress } from './src/nfcSender';
+import { NfcCancelled, cancelSending, isSupported, sendImage, type Progress } from './src/nfcSender';
 
 // M5PaperMono の画面。NFC を積むのはこの機種だけ。
 const SCREEN_WIDTH = 480;
@@ -84,10 +84,15 @@ export default function App() {
       await sendImage(image.bytes, setProgress);
       setMessage('送信しました');
     } catch (e) {
-      const text = e instanceof Error ? e.message : String(e);
-      setError(text);
-      // 画面の下に隠れて見落とさないよう、確実に見える形でも出す
-      Alert.alert('送信できませんでした', text);
+      // 自分でやめた場合は失敗ではないので、警告を出さない
+      if (e instanceof NfcCancelled) {
+        setMessage('送信をやめました');
+      } else {
+        const text = e instanceof Error ? e.message : String(e);
+        setError(text);
+        // 画面の下に隠れて見落とさないよう、確実に見える形でも出す
+        Alert.alert('送信できませんでした', text);
+      }
     } finally {
       setBusy(false);
       setProgress(null);
@@ -171,6 +176,12 @@ export default function App() {
                 ? '本体にかざしたまま離さないでください'
                 : '本体から離さないでください'}
             </Text>
+            {/* iOS はシートに「キャンセル」があるが、Android は何も出ない */}
+            {Platform.OS === 'android' && (
+              <Pressable style={styles.cancel} onPress={cancelSending}>
+                <Text style={styles.cancelLabel}>キャンセル</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -212,6 +223,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   barFill: { height: '100%', backgroundColor: '#1257a0' },
+  cancel: { marginTop: 16, paddingVertical: 10, paddingHorizontal: 24 },
+  cancelLabel: { fontSize: 15, fontWeight: '600', color: '#b00' },
   ok: { marginTop: 20, fontSize: 15, fontWeight: '600', color: '#1a7f37', textAlign: 'center' },
   error: { marginTop: 20, fontSize: 15, fontWeight: '600', color: '#b00', textAlign: 'center' },
 });
