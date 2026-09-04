@@ -310,6 +310,49 @@ void test_crc32_matches_known_values()
     TEST_ASSERT_EQUAL_UINT32(0xD202EF8Du, crc32((const uint8_t *)"\x00", 1));
 }
 
+void test_matches_the_documented_examples()
+{
+    // docs/nfc-protocol.md に載せているバイト列そのもの。
+    // 送る側を自分で実装する人はこの文書を頼りにするので、
+    // 実装を変えて文書と食い違ったらここで気付けるようにしている。
+    NfcSession session;
+    session.begin(buffer, sizeof(buffer), 480, 800);
+
+    struct Case
+    {
+        const char *label;
+        std::vector<uint8_t> request;
+        std::vector<uint8_t> response;
+    };
+
+    const std::vector<Case> cases = {
+        {"HELLO",
+         {0x43, 0x43, 0x01, 0x01},
+         {0x43, 0x43, 0x01, 0x01, 0x00, 0x00, 0xF1, 0x00, 0x00, 0x10, 0x00, 0x01, 0xE0, 0x03, 0x20}},
+        {"BEGIN",
+         {0x43, 0x43, 0x01, 0x02, 0x00, 0x00, 0x00, 0x06, 0x86, 0xD3, 0xF8, 0xC2},
+         {0x43, 0x43, 0x01, 0x02, 0x01, 0xCD, 0x72, 0x34, 0xEC, 0x00, 0x00, 0x00, 0x00}},
+        {"DATA",
+         {0x43, 0x43, 0x01, 0x03, 0xCD, 0x72, 0x34, 0xEC, 0x00, 0x00, 0x00, 0x00,
+          0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10},
+         {0x43, 0x43, 0x01, 0x03, 0x01, 0x00, 0x00, 0x00, 0x06}},
+        {"COMMIT",
+         {0x43, 0x43, 0x01, 0x04, 0xCD, 0x72, 0x34, 0xEC},
+         {0x43, 0x43, 0x01, 0x04, 0x00}},
+    };
+
+    for (const auto &c : cases)
+    {
+        size_t length = session.handle(c.request.data(), c.request.size(), response, sizeof(response));
+        TEST_ASSERT_EQUAL_INT_MESSAGE((int)c.response.size(), (int)length, c.label);
+        TEST_ASSERT_EQUAL_UINT8_ARRAY_MESSAGE(c.response.data(), response, c.response.size(), c.label);
+    }
+
+    // 文書に載せている CRC の期待値
+    const uint8_t sample[] = {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10};
+    TEST_ASSERT_EQUAL_UINT32(0x86D3F8C2u, crc32(sample, sizeof(sample)));
+}
+
 int runUnityTests(void)
 {
     UNITY_BEGIN();
@@ -327,6 +370,7 @@ int runUnityTests(void)
     RUN_TEST(test_abort_clears_the_transfer);
     RUN_TEST(test_unknown_command_is_answered);
     RUN_TEST(test_crc32_matches_known_values);
+    RUN_TEST(test_matches_the_documented_examples);
     return UNITY_END();
 }
 

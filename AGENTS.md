@@ -229,6 +229,8 @@ iOS はこの画面を離れると、インターネットの無いネットワ�
 
 やり取りの決まりは `lib/NfcTransfer/Protocol` と `app/src/protocol.ts` の**両方に同じ内容がある**。どちらかを変えたらもう一方も直すこと。とくに CRC-32 は値が食い違うと転送が必ず失敗する。
 
+仕様は [docs/nfc-protocol.md](docs/nfc-protocol.md) にまとめてある。**この文書は他の言語で送る側を実装するための唯一の手がかりになる**ので、決まりを変えたら必ず更新すること。文書に載せているバイト列は `test/test_nfc_protocol/` で実装と突き合わせているので、食い違えば CI で落ちる。
+
 ## スマホのアプリ（app/）
 
 Expo で作った React Native のアプリ。NFC で画像を送る。
