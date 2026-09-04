@@ -68,6 +68,14 @@ open ios/CardCase.xcworkspace
 
 **タグを打てば、焼いて配るところまで自動で終わる。**[App Release](../.github/workflows/app-release.yml) が EAS に投げ、出来上がりを DeployGate に上げる。
 
+配り口は 2 つあり、どちらからでも入れられる。**EAS の配布ページだけでも配れる**（`eas.json` を `distribution: internal` にしてあるので、ビルドが終わると QR 付きのページができる。iOS は itms-services で直接入る）。DeployGate は必須ではないが、他の案件と同じ場所にまとめたいので通している。
+
+| | EAS の配布ページ | DeployGate |
+| --- | --- | --- |
+| 追加の設定 | 要らない | Secrets 3 つとアップロード処理 |
+| 配布先の管理 | Expo のメンバー招待 | DeployGate のグループ |
+| まとまり | Expo の案件だけ | 他の案件と同じ場所 |
+
 ビルドを特定の Mac に依存させないため、実際に焼くのは EAS（クラウド）。手元で焼くと、その機械の Xcode・鍵・`ios/` の状態が成果物に混ざる。実際、`app.json` で bundle id を変えたのに `ios/` が古いままで、別の id のまま焼けていたことがある。EAS は毎回まっさらな状態で `app.json` から作り直すので、これが起きない。
 
 リリースは多くないので無料枠（iOS / Android それぞれ月 15 回・低優先度キュー）で足りる。**開発中は今までどおり手元の `expo run:ios` を使う。**キューを待っていられないため。
