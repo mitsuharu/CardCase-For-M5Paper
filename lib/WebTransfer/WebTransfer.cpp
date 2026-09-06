@@ -283,6 +283,13 @@ button:disabled{background:#9bb4cc}
 <button type="button" id="swap">縦横を入れ替え</button>
 </div>
 <div class="row">
+<span class="caption">折り返し</span>
+<div class="seg" id="reflow">
+<button type="button" data-reflow="auto" class="on">自動</button>
+<button type="button" data-reflow="keep">しない</button>
+</div>
+</div>
+<div class="row">
 <span class="caption">文字寄せ</span>
 <div class="seg" id="align">
 <button type="button" data-align="left">左</button>
@@ -312,6 +319,8 @@ const tw = document.getElementById('tw');
 const th = document.getElementById('th');
 const ratio = document.getElementById('ratio');
 let alignment = 'center';
+// 'auto' は読めなくなるなら折り返す。'keep' は書いた行のままにする。
+let reflow = 'auto';
 let blob = null;
 let name = 'image.png';
 
@@ -413,6 +422,10 @@ function drawImage(img, scale) {
   ctx.drawImage(img, 0, 0, preview.width, preview.height);
 }
 
+// 電子ペーパーは階調が粗く、これを切ると画数の多い漢字が潰れて読めない。
+// 折り返すかどうかと、割合で小さくするときの下限の両方でこの値を使う。
+const READABLE = 12;
+
 // 折り返しの単位。日本語は語の切れ目が無いので 1 文字ずつ送るが、
 // 英数字とアドレスは途中で切れると読めなくなるので塊のまま扱う。
 function tokenize(line) {
@@ -455,13 +468,20 @@ function widest(ctx, lines) {
   return max;
 }
 
+// 電子ペーパーは階調が粗く細い線が飛ぶので、太字で描く。
 function fontOf(size) {
   return 'bold ' + size + 'px "Hiragino Sans","Noto Sans JP",sans-serif';
 }
 
 // 枠に収まる最大の文字の大きさを二分探索で決める。
 // 1 段ずつ試すと文字数が多いときに時間がかかる。
-function fit(ctx, body, innerWidth, innerHeight, allowBroken) {
+//
+// level は折り返しをどこまで許すか。
+//   0 … 書いたとおりの行のまま。折り返さない
+//   1 … 折り返してよい。ただし語の途中では切らない
+//   2 … 語の途中でも切る
+function fit(ctx, body, innerWidth, innerHeight, level) {
+  const paragraphs = body.split('\n').length;
   let low = 4;
   let high = innerHeight;
   let best = null;
@@ -470,7 +490,10 @@ function fit(ctx, body, innerWidth, innerHeight, allowBroken) {
     ctx.font = fontOf(size);
     const wrapped = wrap(ctx, body, innerWidth);
     const lineHeight = Math.ceil(size * 1.35);
-    const fits = (allowBroken || !wrapped.broken)
+    const allowed = level >= 2
+      || (level === 1 && !wrapped.broken)
+      || (level === 0 && wrapped.lines.length === paragraphs);
+    const fits = allowed
       && wrapped.lines.length * lineHeight <= innerHeight
       && widest(ctx, wrapped.lines) <= innerWidth;
     if (fits) {
@@ -483,43 +506,56 @@ function fit(ctx, body, innerWidth, innerHeight, allowBroken) {
   return best;
 }
 
-// 文字を画像にする。
-// 電子ペーパーは階調が粗く細い線が飛ぶので、太字で大きく描く。
-// 大きさは枠に収まる最大を探して決める。指定した枠は機種の画面と同じとは限らず、
+// 文字を canvas に描く。実際に使った文字の大きさを返す（描かなければ 0）。
+//
+// 大きさは枠に収まる最大を探して決める。枠は機種の画面と同じとは限らず、
 // 文字数も毎回違うので、固定の値では入り切らないか小さすぎるかのどちらかになる。
 // share は枠いっぱい（自動）に対する割合。小さくしたいときだけ 1 未満にする。
-function drawText(body, width, height, share, align) {
-  const ctx = context(width, height);
-  drawnSize = 0;
+// reflow は折り返しの扱い。'keep' なら書いた行のままにする。
+function paintText(ctx, width, height, body, share, align, reflow) {
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
   if (body.trim() === '') {
-    return;
+    return 0;
   }
 
   // 余白。ベゼルに隠れる分と、名刺として見たときの見栄えの両方から取る。
-  const padding = Math.round(Math.min(preview.width, preview.height) * 0.08);
-  const innerWidth = Math.max(1, preview.width - padding * 2);
-  const innerHeight = Math.max(1, preview.height - padding * 2);
+  const padding = Math.round(Math.min(width, height) * 0.08);
+  const innerWidth = Math.max(1, width - padding * 2);
+  const innerHeight = Math.max(1, height - padding * 2);
 
-  // まず語を割らずに収まる大きさを探し、見つからなければ割ることを許して探し直す。
-  // 1 文字が枠の幅に入らないほど長い語だけが後者に落ちる。
-  const best = fit(ctx, body, innerWidth, innerHeight, false)
-    || fit(ctx, body, innerWidth, innerHeight, true);
+  // 書いた人が入れた改行を優先する。日本語は語の切れ目が無いので、
+  // 折り返しを先に許すと「山田 太」「郎」のように名前が割れたまま、
+  // そのぶん字を大きくできてしまう。
+  //
+  // ただし、そのために読めない大きさになるなら折り返しに任せる。長い 1 行を
+  // そのまま入れようとすると極端に小さくなる（540x960 に 60 字を 1 行で入れると
+  // 7px、折り返せば 64px）。名刺として使えるかどうかは、そちらで決まる。
+  //
+  // 折り返しても入らなければ語の途中でも切る。それでも駄目なときは何も描かない。
+  // 呼び出し側が「入らない」と知らせる。
+  //
+  // 'keep' が選ばれているときは、小さくなっても書いた行のままにする。
+  // 表の見出しのように、折り返されると意味が変わるものがあるため。
+  const written = fit(ctx, body, innerWidth, innerHeight, 0);
+  const best = (reflow === 'keep' || (written !== null && written.size >= READABLE))
+    ? written
+    : (fit(ctx, body, innerWidth, innerHeight, 1)
+      || fit(ctx, body, innerWidth, innerHeight, 2));
   if (best === null) {
-    return;
+    return 0;
   }
 
   // 枠いっぱいを上限に、指定の割合まで小さくする。
   // 小さくすると 1 行に入る文字数が変わるので、折り返しはその大きさで取り直す。
   //
-  // 電子ペーパーは階調が粗く、12px を切ると画数の多い漢字が潰れて読めない。
   // 自動でそこまで小さくなる場合（文字数が多いとき）は仕方がないが、
-  // 割合の指定でそこまで落とさない。
-  const floor = Math.min(best.size, 12);
+  // 割合の指定で読めない大きさまで落とさない。
+  const floor = Math.min(best.size, READABLE);
   const size = Math.max(floor, Math.round(best.size * share));
   ctx.font = fontOf(size);
   const wrapped = wrap(ctx, body, innerWidth);
   const lineHeight = Math.ceil(size * 1.35);
-  drawnSize = size;
 
   ctx.fillStyle = '#000';
   ctx.textAlign = align;
@@ -527,13 +563,20 @@ function drawText(body, width, height, share, align) {
 
   // 縦は常に中央に置く。上下の寄せは、電子ペーパーのベゼルに近づくほど
   // 読みにくくなるだけで、名刺の見え方としても得るものが無い。
-  let y = (preview.height - wrapped.lines.length * lineHeight) / 2 + lineHeight / 2;
-  const x = align === 'left' ? padding
-    : (align === 'right' ? preview.width - padding : preview.width / 2);
+  let y = (height - wrapped.lines.length * lineHeight) / 2 + lineHeight / 2;
+  const x = align === 'left' ? padding : (align === 'right' ? width - padding : width / 2);
   for (const line of wrapped.lines) {
     ctx.fillText(line, x, y);
     y += lineHeight;
   }
+  return size;
+}
+
+// 描くのはプレビューの canvas。大きさを整えるところだけこちらに置いて、
+// 絵の中身は paintText に閉じ込めてある。
+function drawText(body, width, height, share, align, wrapping) {
+  const ctx = context(width, height);
+  drawnSize = paintText(ctx, preview.width, preview.height, body, share, align, wrapping);
 }
 
 // 本体が受け取れる大きさに収まるまで、圧縮を強めながら小さくしていく。
@@ -618,8 +661,16 @@ function scheduleText() {
     show('作成中...');
     const width = size(tw, W);
     const height = size(th, H);
-    render = scale => drawText(body, width * scale, height * scale, chosenShare(), alignment);
+    render = scale => drawText(body, width * scale, height * scale, chosenShare(), alignment, reflow);
     await prepare();
+
+    // 枠に対して文字が多すぎると、どの大きさでも収まらず何も描けない。
+    // 白いままの画像を送ってしまわないよう、ここで止める。
+    if (blob !== null && drawnSize === 0) {
+      blob = null;
+      send.disabled = true;
+      show('文字が多すぎて枠に入りません', 'ng');
+    }
   }, 300);
 }
 
@@ -637,6 +688,16 @@ ratio.addEventListener('input', () => {
   const percent = Math.round(chosenShare() * 100);
   document.getElementById('ratio-value').textContent =
     percent === 100 ? '自動' : ('自動の ' + percent + '%');
+  scheduleText();
+});
+
+document.getElementById('reflow').addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  reflow = button.dataset.reflow;
+  for (const other of document.getElementById('reflow').getElementsByTagName('button')) {
+    other.className = (other === button) ? 'on' : '';
+  }
   scheduleText();
 });
 
