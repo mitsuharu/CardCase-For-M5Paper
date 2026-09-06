@@ -241,6 +241,14 @@ font-family:inherit;border:1px solid #bbb;border-radius:8px;resize:vertical}
 border:1px solid #bbb;border-radius:6px}
 .size button{width:auto;margin:0;padding:.5rem .7rem;font-size:.85rem;white-space:nowrap;
 background:#fff;color:#1257a0;border:1px solid #1257a0}
+.row{display:flex;align-items:center;gap:.6rem;margin-top:.75rem}
+.row .caption{font-size:.85rem;color:#555;white-space:nowrap}
+.seg{display:flex;gap:.35rem}
+.seg button{width:auto;margin:0;padding:.4rem .7rem;font-size:.85rem;background:#fff;
+color:#1257a0;border:1px solid #1257a0;border-radius:6px}
+.seg button.on{background:#1257a0;color:#fff}
+input[type=range]{flex:1;min-width:0}
+.row .value{font-size:.8rem;color:#777;white-space:nowrap;min-width:6rem;text-align:right}
 .hint{margin:.5rem 0 0;font-size:.8rem;color:#777}
 .note{margin-top:1rem;padding:.75rem 1rem;background:#fff8e1;border-left:4px solid #d0a000;
 border-radius:0 4px 4px 0;font-size:.85rem;color:#555;line-height:1.6}
@@ -274,6 +282,19 @@ button:disabled{background:#9bb4cc}
 <label>高さ<input type="number" id="th" min="16" max="2000" step="1" value="%H%"></label>
 <button type="button" id="swap">縦横を入れ替え</button>
 </div>
+<div class="row">
+<span class="caption">文字寄せ</span>
+<div class="seg" id="align">
+<button type="button" data-align="left">左</button>
+<button type="button" data-align="center" class="on">中央</button>
+<button type="button" data-align="right">右</button>
+</div>
+</div>
+<div class="row">
+<span class="caption">文字の大きさ</span>
+<input type="range" id="ratio" min="40" max="100" step="5" value="100">
+<span class="value" id="ratio-value">自動</span>
+</div>
 <p class="hint">本体の画面は %W% x %H% です。同じ大きさにすると、拡大されずいちばんきれいに出ます。</p>
 </div>
 <canvas id="preview"></canvas>
@@ -289,6 +310,8 @@ const status = document.getElementById('status');
 const text = document.getElementById('text');
 const tw = document.getElementById('tw');
 const th = document.getElementById('th');
+const ratio = document.getElementById('ratio');
+let alignment = 'center';
 let blob = null;
 let name = 'image.png';
 
@@ -371,6 +394,9 @@ function load(f) {
   });
 }
 
+// 実際に描いた文字の大きさ。画面に出して、目安が分かるようにする。
+let drawnSize = 0;
+
 function context(w, h) {
   preview.width = Math.max(1, Math.round(w));
   preview.height = Math.max(1, Math.round(h));
@@ -382,6 +408,7 @@ function context(w, h) {
 
 // 指定の倍率で描き直す
 function drawImage(img, scale) {
+  drawnSize = 0;
   const ctx = context(img.naturalWidth * scale, img.naturalHeight * scale);
   ctx.drawImage(img, 0, 0, preview.width, preview.height);
 }
@@ -460,8 +487,10 @@ function fit(ctx, body, innerWidth, innerHeight, allowBroken) {
 // 電子ペーパーは階調が粗く細い線が飛ぶので、太字で大きく描く。
 // 大きさは枠に収まる最大を探して決める。指定した枠は機種の画面と同じとは限らず、
 // 文字数も毎回違うので、固定の値では入り切らないか小さすぎるかのどちらかになる。
-function drawText(body, width, height) {
+// share は枠いっぱい（自動）に対する割合。小さくしたいときだけ 1 未満にする。
+function drawText(body, width, height, share, align) {
   const ctx = context(width, height);
+  drawnSize = 0;
   if (body.trim() === '') {
     return;
   }
@@ -479,14 +508,31 @@ function drawText(body, width, height) {
     return;
   }
 
-  ctx.font = fontOf(best.size);
+  // 枠いっぱいを上限に、指定の割合まで小さくする。
+  // 小さくすると 1 行に入る文字数が変わるので、折り返しはその大きさで取り直す。
+  //
+  // 電子ペーパーは階調が粗く、12px を切ると画数の多い漢字が潰れて読めない。
+  // 自動でそこまで小さくなる場合（文字数が多いとき）は仕方がないが、
+  // 割合の指定でそこまで落とさない。
+  const floor = Math.min(best.size, 12);
+  const size = Math.max(floor, Math.round(best.size * share));
+  ctx.font = fontOf(size);
+  const wrapped = wrap(ctx, body, innerWidth);
+  const lineHeight = Math.ceil(size * 1.35);
+  drawnSize = size;
+
   ctx.fillStyle = '#000';
-  ctx.textAlign = 'center';
+  ctx.textAlign = align;
   ctx.textBaseline = 'middle';
-  let y = (preview.height - best.lines.length * best.lineHeight) / 2 + best.lineHeight / 2;
-  for (const line of best.lines) {
-    ctx.fillText(line, preview.width / 2, y);
-    y += best.lineHeight;
+
+  // 縦は常に中央に置く。上下の寄せは、電子ペーパーのベゼルに近づくほど
+  // 読みにくくなるだけで、名刺の見え方としても得るものが無い。
+  let y = (preview.height - wrapped.lines.length * lineHeight) / 2 + lineHeight / 2;
+  const x = align === 'left' ? padding
+    : (align === 'right' ? preview.width - padding : preview.width / 2);
+  for (const line of wrapped.lines) {
+    ctx.fillText(line, x, y);
+    y += lineHeight;
   }
 }
 
@@ -522,7 +568,8 @@ async function prepare() {
   blob = encoded.data;
   name = 'image.' + encoded.ext;
   send.disabled = false;
-  show(preview.width + ' x ' + preview.height + ' / ' + Math.round(blob.size / 1024) + ' KB');
+  const size = drawnSize > 0 ? ' / 文字 ' + drawnSize + 'px' : '';
+  show(preview.width + ' x ' + preview.height + ' / ' + Math.round(blob.size / 1024) + ' KB' + size);
 }
 
 file.addEventListener('change', async () => {
@@ -571,14 +618,37 @@ function scheduleText() {
     show('作成中...');
     const width = size(tw, W);
     const height = size(th, H);
-    render = scale => drawText(body, width * scale, height * scale);
+    render = scale => drawText(body, width * scale, height * scale, chosenShare(), alignment);
     await prepare();
   }, 300);
+}
+
+// 自動で決めた大きさに対する割合。100% が枠いっぱいで、それより大きくはできない。
+function chosenShare() {
+  const value = Number(ratio.value);
+  return (isFinite(value) && value >= 40 && value <= 100) ? value / 100 : 1;
 }
 
 text.addEventListener('input', scheduleText);
 tw.addEventListener('change', scheduleText);
 th.addEventListener('change', scheduleText);
+
+ratio.addEventListener('input', () => {
+  const percent = Math.round(chosenShare() * 100);
+  document.getElementById('ratio-value').textContent =
+    percent === 100 ? '自動' : ('自動の ' + percent + '%');
+  scheduleText();
+});
+
+document.getElementById('align').addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  alignment = button.dataset.align;
+  for (const other of document.getElementById('align').getElementsByTagName('button')) {
+    other.className = (other === button) ? 'on' : '';
+  }
+  scheduleText();
+});
 
 document.getElementById('swap').addEventListener('click', () => {
   const width = tw.value;
