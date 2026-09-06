@@ -1,0 +1,359 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  InputAccessoryView,
+  Keyboard,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
+import { WebView } from 'react-native-webview'
+
+import { bytesFromDataUrl } from './base64'
+import { pickImage, takePhoto, toDataUrl, type PreparedImage } from './imagePicker'
+import { TEXT_RENDER_HTML, type CardRequest, type DrawResult } from './textRender'
+
+export type CardResult =
+  | { kind: 'empty' }
+  /** 枠に対して文字が多すぎて、どの大きさでも収まらない */
+  | { kind: 'overflow' }
+  /** QR にするには URL が長すぎる */
+  | { kind: 'url-too-long' }
+  | { kind: 'ready'; image: PreparedImage; size: number }
+
+type Props = {
+  /** 本体の画面。はじめの枠の大きさになる */
+  screenWidth: number
+  screenHeight: number
+  onResult: (result: CardResult) => void
+  onError: (message: string) => void
+}
+
+// 名刺に載せる画像を縮める先。
+// 画面の長い方に合わせておけば、名刺の中で使う大きさには足りる。
+const IMAGE_BOX = 800
+
+// キーボードの上に出す「閉じる」。
+// 幅と高さは number-pad で、iOS のこのキーボードには改行も完了も無い。
+const ACCESSORY_ID = 'cardcase-card-input'
+const accessoryFor = Platform.OS === 'ios' ? ACCESSORY_ID : undefined
+
+/** 枠の大きさ。極端な値は描く前に落とす。 */
+function size(input: string, fallback: number): number {
+  const value = Math.round(Number(input))
+  if (!isFinite(value) || value < 16) {
+    return fallback
+  }
+  return Math.min(value, 2000)
+}
+
+/**
+ * 決まった項目を並べて名刺にする。
+ *
+ * 書いた文字をそのまま画像にする TextComposer と違い、こちらは項目
+ * （画像・タイトル・サブタイトル・アカウント・QR）を受け取って組む。
+ * 空にした項目は場所を取らず、残りが詰まって真ん中に来る。
+ *
+ * 描くのは WebView の canvas で、コードは本体の WiFi 画面と同じものを使う。
+ * 詳しくは textRender.ts を見ること。
+ */
+export function CardComposer({ screenWidth, screenHeight, onResult, onError }: Props) {
+  const [image, setImage] = useState<string | null>(null)
+  const [title, setTitle] = useState('')
+  const [subtitle, setSubtitle] = useState('')
+  const [account, setAccount] = useState('')
+  const [url, setUrl] = useState('')
+  const [width, setWidth] = useState(String(screenWidth))
+  const [height, setHeight] = useState(String(screenHeight))
+  const [busy, setBusy] = useState(false)
+
+  // 呼び出し側が毎回作り直す関数を渡してきても、描き直しの合図が
+  // 増えないようにする。TextComposer と同じ理由。
+  const callbacks = useRef({ onResult, onError })
+  callbacks.current = { onResult, onError }
+
+  const webview = useRef<WebView>(null)
+  const ready = useRef(false)
+  const waiting = useRef<CardRequest | null>(null)
+  const latest = useRef(0)
+
+  const draw = useCallback(() => {
+    latest.current += 1
+    const request: CardRequest = {
+      id: latest.current,
+      image,
+      title,
+      subtitle,
+      account,
+      url: url.trim(),
+      width: size(width, screenWidth),
+      height: size(height, screenHeight),
+    }
+
+    const empty = request.image === null && request.url === ''
+      && request.title.trim() === ''
+      && request.subtitle.trim() === ''
+      && request.account.trim() === ''
+    if (empty) {
+      callbacks.current.onResult({ kind: 'empty' })
+      return
+    }
+
+    if (!ready.current) {
+      waiting.current = request
+      return
+    }
+    webview.current?.injectJavaScript(`window.drawCard(${JSON.stringify(request)}); true;`)
+  }, [account, height, image, screenHeight, screenWidth, subtitle, title, url, width])
+
+  // 1 文字ごとに描き直すと、そのたびに二分探索と PNG の生成が走る。
+  // 手が止まってからにする。
+  useEffect(() => {
+    const timer = setTimeout(draw, 300)
+    return () => clearTimeout(timer)
+  }, [draw])
+
+  async function choose(source: 'library' | 'camera') {
+    try {
+      setBusy(true)
+      const picked = source === 'library' ? await pickImage() : await takePhoto()
+      if (!picked) {
+        return
+      }
+      setImage(await toDataUrl(picked, IMAGE_BOX))
+    } catch (e) {
+      callbacks.current.onError(e instanceof Error ? e.message : '画像を読み込めませんでした')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function receive(raw: string) {
+    let result: DrawResult
+    try {
+      result = JSON.parse(raw) as DrawResult
+    } catch {
+      callbacks.current.onError('名刺を画像にできませんでした')
+      return
+    }
+
+    if (result.ready) {
+      ready.current = true
+      if (waiting.current) {
+        const request = waiting.current
+        waiting.current = null
+        webview.current?.injectJavaScript(`window.drawCard(${JSON.stringify(request)}); true;`)
+      }
+      return
+    }
+
+    // 追い抜かれた結果は捨てる。古い絵を送ってしまわないため。
+    if (result.id !== latest.current) {
+      return
+    }
+
+    if (result.tooLong) {
+      callbacks.current.onResult({ kind: 'url-too-long' })
+      return
+    }
+
+    if (result.error) {
+      callbacks.current.onError(result.error)
+      return
+    }
+
+    // 枠に入らなかったときは絵が返らない。送らせない。
+    if (!result.drawn || !result.dataUrl) {
+      callbacks.current.onResult({ kind: 'overflow' })
+      return
+    }
+
+    try {
+      callbacks.current.onResult({
+        kind: 'ready',
+        size: result.size ?? 0,
+        image: {
+          bytes: bytesFromDataUrl(result.dataUrl),
+          uri: result.dataUrl,
+          width: result.width ?? 0,
+          height: result.height ?? 0,
+        },
+      })
+    } catch (e) {
+      callbacks.current.onError(e instanceof Error ? e.message : '名刺を画像にできませんでした')
+    }
+  }
+
+  return (
+    <View>
+      <View style={styles.row}>
+        <Pressable
+          style={[styles.chip, styles.grow, busy && styles.disabled]}
+          onPress={() => choose('library')}
+          disabled={busy}>
+          <Text style={styles.chipLabel}>写真から選ぶ</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.chip, styles.grow, busy && styles.disabled]}
+          onPress={() => choose('camera')}
+          disabled={busy}>
+          <Text style={styles.chipLabel}>撮影する</Text>
+        </Pressable>
+        {image !== null && (
+          <Pressable style={styles.chip} onPress={() => setImage(null)}>
+            <Text style={styles.chipLabel}>外す</Text>
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.caption}>タイトル</Text>
+        <TextInput
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="江本 光晴"
+          placeholderTextColor="#999"
+          inputAccessoryViewID={accessoryFor}
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.caption}>サブタイトル</Text>
+        <TextInput
+          style={styles.input}
+          value={subtitle}
+          onChangeText={setSubtitle}
+          placeholder="Mitsuharu Emoto"
+          placeholderTextColor="#999"
+          inputAccessoryViewID={accessoryFor}
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.caption}>SNS アカウント</Text>
+        <TextInput
+          style={styles.input}
+          value={account}
+          onChangeText={setAccount}
+          placeholder="@mitsuharu_e"
+          placeholderTextColor="#999"
+          autoCapitalize="none"
+          inputAccessoryViewID={accessoryFor}
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.caption}>QR にする URL</Text>
+        <TextInput
+          style={styles.input}
+          value={url}
+          onChangeText={setUrl}
+          placeholder="https://x.com/mitsuharu_e"
+          placeholderTextColor="#999"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          inputAccessoryViewID={accessoryFor}
+        />
+      </View>
+
+      <View style={styles.row}>
+        <View style={styles.number}>
+          <Text style={styles.caption}>幅</Text>
+          <TextInput
+            style={styles.input}
+            value={width}
+            onChangeText={setWidth}
+            keyboardType="number-pad"
+            inputAccessoryViewID={accessoryFor}
+          />
+        </View>
+        <View style={styles.number}>
+          <Text style={styles.caption}>高さ</Text>
+          <TextInput
+            style={styles.input}
+            value={height}
+            onChangeText={setHeight}
+            keyboardType="number-pad"
+            inputAccessoryViewID={accessoryFor}
+          />
+        </View>
+        <Pressable
+          style={styles.chip}
+          onPress={() => {
+            setWidth(height)
+            setHeight(width)
+          }}>
+          <Text style={styles.chipLabel}>縦横を入れ替え</Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.hint}>
+        空にした項目は詰めて並べます。横長にすると画像を左、文字と QR を右に置きます。
+      </Text>
+
+      {Platform.OS === 'ios' && (
+        <InputAccessoryView nativeID={ACCESSORY_ID}>
+          <View style={styles.accessory}>
+            <Pressable style={styles.close} onPress={() => Keyboard.dismiss()}>
+              <Text style={styles.closeLabel}>閉じる</Text>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      )}
+
+      <View style={styles.hidden} pointerEvents="none">
+        <WebView
+          ref={webview}
+          source={{ html: TEXT_RENDER_HTML }}
+          originWhitelist={['*']}
+          javaScriptEnabled
+          onMessage={(event) => receive(event.nativeEvent.data)}
+        />
+      </View>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 12 },
+  grow: { flex: 1, alignItems: 'center' },
+  field: { marginTop: 12 },
+  number: { flex: 1 },
+  caption: { fontSize: 13, color: '#555', marginBottom: 4 },
+  input: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 15,
+    color: '#222',
+    borderWidth: 1,
+    borderColor: '#bbb',
+    borderRadius: 6,
+  },
+  chip: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#1257a0',
+    borderRadius: 6,
+  },
+  chipLabel: { fontSize: 13, fontWeight: '600', color: '#1257a0' },
+  disabled: { opacity: 0.5 },
+  hint: { marginTop: 10, fontSize: 12, color: '#777', lineHeight: 18 },
+  accessory: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#f4f4f5',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#c8c8cc',
+  },
+  close: { paddingVertical: 6, paddingHorizontal: 12 },
+  closeLabel: { fontSize: 16, fontWeight: '600', color: '#1257a0' },
+  // 絵を作るためだけの WebView。見せる必要はないが、
+  // 大きさを 0 にすると端末によっては動かないので 1px 残す。
+  hidden: { position: 'absolute', width: 1, height: 1, opacity: 0 },
+})

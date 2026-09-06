@@ -4,6 +4,14 @@ import { File } from 'expo-file-system';
 
 import { fitToScreen } from './fit';
 
+/**
+ * WebView へ渡す data URL の上限。
+ *
+ * 橋を渡るのは文字列なので、大きいほど時間がかかり、古い端末では詰まる。
+ * 名刺の中で画像が占めるのは画面の半分ほどなので、この辺りで足りる。
+ */
+const MAX_DATA_URL = 600 * 1024;
+
 /** 送る画像。バイト列と、確認用の表示先。 */
 export type PreparedImage = {
   bytes: Uint8Array;
@@ -84,6 +92,44 @@ export async function prepareImage(
     return smallest;
   }
   throw new Error('この画像を読み込めませんでした');
+}
+
+/**
+ * 名刺に載せる画像を data URL にする。
+ *
+ * 描くのは WebView の canvas なので、橋を渡せる文字列にしないと届かない。
+ * 端末の写真はそのままだと数 MB あり、橋の上で詰まる。名刺の中で使うのは
+ * 画面の半分ほどの大きさなので、そこまで縮めてから渡す。
+ */
+export async function toDataUrl(uri: string, box: number): Promise<string> {
+  const source = await ImageManipulator.ImageManipulator.manipulate(uri).renderAsync();
+  const scale = Math.min(1, box / Math.max(source.width, source.height));
+  const rendered = await ImageManipulator.ImageManipulator.manipulate(uri)
+    .resize({
+      width: Math.max(1, Math.round(source.width * scale)),
+      height: Math.max(1, Math.round(source.height * scale)),
+    })
+    .renderAsync();
+
+  // 名刺に載せるのはロゴや似顔絵のような画像が多い。PNG なら劣化しない。
+  // 写真を選ばれると PNG では大きくなりすぎるので、そのときだけ JPEG にする。
+  const png = await rendered.saveAsync({
+    base64: true,
+    format: ImageManipulator.SaveFormat.PNG,
+  });
+  if (png.base64 && png.base64.length <= MAX_DATA_URL) {
+    return `data:image/png;base64,${png.base64}`;
+  }
+
+  const jpeg = await rendered.saveAsync({
+    base64: true,
+    compress: 0.8,
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
+  if (!jpeg.base64) {
+    throw new Error('この画像を読み込めませんでした');
+  }
+  return `data:image/jpeg;base64,${jpeg.base64}`;
 }
 
 export async function pickImage(): Promise<string | null> {
