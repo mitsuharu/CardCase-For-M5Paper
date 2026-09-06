@@ -1,6 +1,6 @@
 # CardCase App
 
-M5PaperMono に NFC で画像を送るアプリです。Expo で作った React Native のアプリで、iOS と Android の両方で動きます。
+M5PaperMono に NFC で画像を送るアプリです。画像のほかに、その場で書いた文字も送れます。Expo で作った React Native のアプリで、iOS と Android の両方で動きます。
 
 **NFC は実機でしか動きません。** シミュレータやエミュレータでは試せないので、必ず端末を繋いで確認してください。
 
@@ -176,16 +176,24 @@ npx eas-cli device:create
 | `src/protocol.ts` | やり取りの決まり。本体側の `lib/NfcTransfer/Protocol` と対 |
 | `src/nfcSender.ts` | NFC の送信。iOS と Android の差を吸収する |
 | `src/imagePicker.ts` | 画像の選択・縮小・形式の変換 |
+| `src/textRender.ts` | 文字を画像にするコード。本体側の `lib/WebTransfer` と対 |
+| `src/TextComposer.tsx` | 文字の入力と、描かせる WebView |
+| `src/base64.ts` | WebView から返る data URL をバイト列に戻す |
 | `App.tsx` | 画面 |
 
 **`src/protocol.ts` を変えたら、本体側も直してください。** とくに CRC-32 は値が食い違うと転送が必ず失敗します。決まりは [NFC 転送プロトコル](../docs/nfc-protocol.md) にまとめてあります。
+
+**`src/textRender.ts` の描画コードも本体側と対です。** 食い違っても転送は成功してしまい、WiFi で送った名刺と NFC で送った名刺で字の大きさや折り返しが変わるだけなので、並べて比べないと気づけません。目印（`>>> shared-text-render`）で挟んだところを機械が突き合わせます。
+
+文字を描くのに WebView を使っているのは、**React Native には文字を画像にする手段が無い**ためです。Skia を積めば描けますが、この 1 機能のために APK が数 MB 増えます。WebView なら canvas がそのまま使え、本体の WiFi 画面と同じコードで、同じフォントで描けます。
 
 食い違いは機械が見ます。CI でも動きますが、手元でも確かめられます。
 
 ```bash
 npm run typecheck        # 型
 npm test                 # 単体の試験
-npm run check-protocol   # 本体との照合
+npm run check-protocol      # 本体との照合（やり取りの決まり）
+npm run check-text-render   # 本体との照合（文字の描き方）
 npm run bundle           # Metro で束ねられるか
 ```
 
@@ -198,6 +206,10 @@ npm run bundle           # Metro で束ねられるか
 | `src/protocol.ts` | バイト列の読み書き、CRC-32 |
 | `src/fit.ts` | 画面に収める大きさの計算 |
 | `src/chunking.ts` | 1 回に送る大きさ、かざし直しの判断 |
+| `src/base64.ts` | data URL からバイト列への変換 |
+| `src/textRender.ts` | 折り返しと文字の大きさの決め方 |
+
+`textRender.ts` の中身はブラウザで動く JavaScript なので、node からは canvas を用意できません。試験では目印で挟んだところを取り出し、文字の幅を返すだけの偽物を渡して動かしています。
 
 `node --test` で `.ts` をそのまま動かすので、試験の道具は足していません。**`src/` から `src/` を読むときは拡張子まで書いてください**（`./protocol.ts`）。Metro は省略しても解決しますが、node は解決しません。
 

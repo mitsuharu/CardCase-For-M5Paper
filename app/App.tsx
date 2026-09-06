@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -16,6 +16,7 @@ import NfcManager from 'react-native-nfc-manager';
 
 import { pickImage, prepareImage, takePhoto, type PreparedImage } from './src/imagePicker';
 import { NfcCancelled, cancelSending, isSupported, sendImage, type Progress } from './src/nfcSender';
+import { TextComposer, type TextResult } from './src/TextComposer';
 
 // M5PaperMono の画面。NFC を積むのはこの機種だけ。
 const SCREEN_WIDTH = 480;
@@ -30,9 +31,15 @@ const SCREEN_HEIGHT = 800;
  */
 const MAX_BYTES = 24 * 1024;
 
+/** 画像を選んで送るか、その場で書いた文字を送るか */
+type Mode = 'image' | 'text';
+
 export default function App() {
   const [supported, setSupported] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<Mode>('image');
   const [image, setImage] = useState<PreparedImage | null>(null);
+  // 文字から作った画像のときだけ、実際に使った大きさを出す
+  const [textSize, setTextSize] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -58,6 +65,7 @@ export default function App() {
       }
       setBusy(true);
       const prepared = await prepareImage(uri, SCREEN_WIDTH, SCREEN_HEIGHT, MAX_BYTES);
+      setTextSize(null);
       setImage(prepared);
 
       // 縮めても目安を超えた場合は、送れるが時間がかかることを伝える
@@ -71,6 +79,42 @@ export default function App() {
       setBusy(false);
     }
   }
+
+  // 画像と文字を行き来しても、送るのは今見えているものだけにする
+  function select(next: Mode) {
+    setMode(next);
+    setImage(null);
+    setTextSize(null);
+    setMessage(null);
+    setError(null);
+  }
+
+  // TextComposer は渡された関数を覚えて描き直しの合図から外すが、
+  // こちら側でも作り直さないようにしておく。
+  const receiveText = useCallback((result: TextResult) => {
+    setError(null);
+    setMessage(null);
+    if (result.kind === 'ready') {
+      setTextSize(result.size);
+      setImage(result.image);
+      if (result.image.bytes.length > MAX_BYTES) {
+        const seconds = Math.ceil(result.image.bytes.length / 1024 / 5.5);
+        setMessage(`この画像は大きめです。送信に ${seconds} 秒ほどかかります。`);
+      }
+      return;
+    }
+    setTextSize(null);
+    setImage(null);
+    if (result.kind === 'overflow') {
+      setError('文字が多すぎて枠に入りません');
+    }
+  }, []);
+
+  const failText = useCallback((text: string) => {
+    setTextSize(null);
+    setImage(null);
+    setError(text);
+  }, []);
 
   async function send() {
     if (!image) {
@@ -122,22 +166,48 @@ export default function App() {
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>CardCase</Text>
-        <Text style={styles.lead}>選んだ画像を M5Paper に NFC で送ります。</Text>
+        <Text style={styles.lead}>選んだ画像、または書いた文字を M5Paper に NFC で送ります。</Text>
 
         <View style={styles.row}>
           <Pressable
-            style={[styles.button, styles.secondary, busy && styles.disabled]}
-            onPress={() => choose('library')}
+            style={[styles.button, styles.tab, mode === 'image' && styles.tabOn]}
+            onPress={() => select('image')}
             disabled={busy}>
-            <Text style={styles.secondaryLabel}>写真から選ぶ</Text>
+            <Text style={[styles.tabLabel, mode === 'image' && styles.tabLabelOn]}>画像</Text>
           </Pressable>
           <Pressable
-            style={[styles.button, styles.secondary, busy && styles.disabled]}
-            onPress={() => choose('camera')}
+            style={[styles.button, styles.tab, mode === 'text' && styles.tabOn]}
+            onPress={() => select('text')}
             disabled={busy}>
-            <Text style={styles.secondaryLabel}>撮影する</Text>
+            <Text style={[styles.tabLabel, mode === 'text' && styles.tabLabelOn]}>テキスト</Text>
           </Pressable>
         </View>
+
+        {mode === 'image' ? (
+          <View style={[styles.row, styles.section]}>
+            <Pressable
+              style={[styles.button, styles.secondary, busy && styles.disabled]}
+              onPress={() => choose('library')}
+              disabled={busy}>
+              <Text style={styles.secondaryLabel}>写真から選ぶ</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.button, styles.secondary, busy && styles.disabled]}
+              onPress={() => choose('camera')}
+              disabled={busy}>
+              <Text style={styles.secondaryLabel}>撮影する</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.section}>
+            <TextComposer
+              screenWidth={SCREEN_WIDTH}
+              screenHeight={SCREEN_HEIGHT}
+              onResult={receiveText}
+              onError={failText}
+            />
+          </View>
+        )}
 
         {image && (
           <View style={styles.preview}>
@@ -145,6 +215,7 @@ export default function App() {
             <Text style={styles.caption}>
               {image.width} x {image.height} ・ {Math.round(image.bytes.length / 1024)} KB ・
               約 {Math.ceil(image.bytes.length / 1024 / 5.5)} 秒
+              {textSize !== null && ` ・ 文字 ${textSize}px`}
             </Text>
           </View>
         )}
@@ -206,6 +277,11 @@ const styles = StyleSheet.create({
   primary: { backgroundColor: '#1257a0', marginTop: 20, flex: 0 },
   primaryLabel: { color: '#fff', fontSize: 16, fontWeight: '600' },
   secondary: { borderWidth: 1, borderColor: '#1257a0' },
+  section: { marginTop: 16 },
+  tab: { borderWidth: 1, borderColor: '#1257a0', paddingVertical: 12 },
+  tabOn: { backgroundColor: '#1257a0' },
+  tabLabel: { color: '#1257a0', fontSize: 15, fontWeight: '600' },
+  tabLabelOn: { color: '#fff' },
   secondaryLabel: { color: '#1257a0', fontSize: 15, fontWeight: '600' },
   disabled: { opacity: 0.5 },
   preview: { marginTop: 24, alignItems: 'center' },

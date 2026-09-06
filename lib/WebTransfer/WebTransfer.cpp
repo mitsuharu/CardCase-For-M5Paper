@@ -422,6 +422,11 @@ function drawImage(img, scale) {
   ctx.drawImage(img, 0, 0, preview.width, preview.height);
 }
 
+// ここから下は app/src/textRender.ts と同じ内容にする。
+// 本体（WiFi）とアプリ（NFC）で、同じ文字が同じ絵になるようにするため。
+// 直したら scripts/check-text-render.mjs が両方を突き合わせる。
+// >>> shared-text-render
+
 // 電子ペーパーは階調が粗く、これを切ると画数の多い漢字が潰れて読めない。
 // 折り返すかどうかと、割合で小さくするときの下限の両方でこの値を使う。
 const READABLE = 12;
@@ -572,8 +577,10 @@ function paintText(ctx, width, height, body, share, align, reflow) {
   return size;
 }
 
+// <<< shared-text-render
+
 // 描くのはプレビューの canvas。大きさを整えるところだけこちらに置いて、
-// 絵の中身は paintText に閉じ込めてある。
+// 絵の中身は本体とアプリで同じコードにしてある。
 function drawText(body, width, height, share, align, wrapping) {
   const ctx = context(width, height);
   drawnSize = paintText(ctx, preview.width, preview.height, body, share, align, wrapping);
