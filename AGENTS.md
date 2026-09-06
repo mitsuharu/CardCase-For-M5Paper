@@ -194,11 +194,18 @@ uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 | `src/` `lib/` など | PlatformIO CI | native テスト、4 機種のビルド |
 | `app/` | App CI | 型、試験、束ね、決まりの照合、Android のビルド |
 | `lib/NfcTransfer/Protocol/` | **両方** | 本体とアプリで対になっているため |
+| `lib/WebTransfer/` | **両方** | 文字の描き方がアプリと対になっているため |
 
 **`app/src/protocol.ts` と `lib/NfcTransfer/Protocol/Protocol.h` は対になっている。**片方だけ直すと、その場では気づかず実機で初めて転送が失敗する。`app/scripts/check-protocol.mjs` が 21 個の値を突き合わせて、食い違えば落とす。手元でも見られる。
 
 ```bash
 cd app && npm run check-protocol
+```
+
+**`app/src/textRender.ts` と `lib/WebTransfer/WebTransfer.cpp` の描画コードも対になっている。**こちらは食い違っても転送は成功してしまい、WiFi で送った名刺と NFC で送った名刺で字の大きさや折り返しが変わるだけなので、並べて比べないと気づけない。`app/scripts/check-text-render.mjs` が `>>> shared-text-render` から `<<< shared-text-render` までを 1 文字ずつ突き合わせる。
+
+```bash
+cd app && npm run check-text-render
 ```
 
 iOS は CI で組み立てない。macOS のランナーが要るうえ遅い。Android は `prebuild` から通すので、`app.json` やプラグインの書き間違いはここで落ちる。
@@ -215,6 +222,10 @@ iOS は CI で組み立てない。macOS のランナーが要るうえ遅い。
 | `src/fit.ts` | 画面に収める大きさの計算 |
 | `src/chunking.ts` | 1 回に送る大きさ、かざし直しの判断 |
 | `src/errors.ts` | 例外。実機の API を読まずに種類を見分けるため |
+| `src/base64.ts` | WebView から返る data URL をバイト列に戻す |
+| `src/textRender.ts` | 文字を描くコード（WebView に渡す文字列） |
+
+`textRender.ts` の中身はブラウザで動く JavaScript なので、node からは canvas を用意できない。`test/textRender.test.ts` は目印で挟んだところを取り出して、文字の幅を返すだけの偽物を渡して動かしている。折り返しと大きさの決め方はこれで確かめられる。
 
 ```bash
 cd app && npm test

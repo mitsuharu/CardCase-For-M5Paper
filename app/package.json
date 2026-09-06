@@ -11,7 +11,8 @@
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-nfc-manager": "^3.17.2",
-    "react-native-safe-area-context": "~5.7.0"
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-webview": "13.16.1"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
@@ -26,7 +27,8 @@
     "typecheck": "tsc --noEmit",
     "check-protocol": "node scripts/check-protocol.mjs",
     "test": "node --test test/*.test.ts",
-    "bundle": "expo export --platform android --output-dir .expo-export"
+    "bundle": "expo export --platform android --output-dir .expo-export",
+    "check-text-render": "node scripts/check-text-render.mjs"
   },
   "private": true
 }
