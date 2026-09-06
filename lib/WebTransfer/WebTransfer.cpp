@@ -211,6 +211,12 @@ namespace
 
     // アップロード画面。縮小と向きの補正はここ（ブラウザ側）で行う。
     // 本体は保存するだけにして、減色はパネルの描画に任せる。
+    //
+    // 文字を送る場合も、ブラウザ側で画像にしてから同じ経路で送る。
+    // 本体にフォントを持たせて描くこともできるが、日本語のフォントは
+    // フラッシュを大きく食う上に、機種ごとの画面に合わせた組版も要る。
+    // スマホのフォントで描いて画像にすれば、どちらも要らない。
+    //
     // %W% と %H% は配信時に機種の画面の大きさへ差し替える。
     const char kPage[] PROGMEM = R"HTML(<!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8">
@@ -220,9 +226,22 @@ namespace
 body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;line-height:1.7;
 margin:0 auto;padding:1.5rem 1.25rem 3rem;max-width:32rem;color:#222;background:#fff}
 h1{font-size:1.3rem;margin:0 0 .25rem}
-p.lead{color:#666;margin:0 0 1.5rem;font-size:.9rem}
+p.lead{color:#666;margin:0 0 1.25rem;font-size:.9rem}
+.tabs{display:flex;gap:.5rem;margin-bottom:1rem}
+.tabs button{flex:1;margin:0;padding:.6rem;font-size:.95rem;background:#fff;color:#1257a0;
+border:1px solid #1257a0;border-radius:8px}
+.tabs button.on{background:#1257a0;color:#fff}
 label.pick{display:block;text-align:center;padding:1.5rem;border:2px dashed #bbb;border-radius:10px;
 cursor:pointer;color:#1257a0;font-weight:600}
+textarea{width:100%;box-sizing:border-box;padding:.75rem;font-size:1rem;line-height:1.6;
+font-family:inherit;border:1px solid #bbb;border-radius:8px;resize:vertical}
+.size{display:flex;align-items:flex-end;gap:.5rem;margin-top:.75rem}
+.size label{font-size:.85rem;color:#555}
+.size input{width:100%;box-sizing:border-box;padding:.5rem;font-size:1rem;
+border:1px solid #bbb;border-radius:6px}
+.size button{width:auto;margin:0;padding:.5rem .7rem;font-size:.85rem;white-space:nowrap;
+background:#fff;color:#1257a0;border:1px solid #1257a0}
+.hint{margin:.5rem 0 0;font-size:.8rem;color:#777}
 .note{margin-top:1rem;padding:.75rem 1rem;background:#fff8e1;border-left:4px solid #d0a000;
 border-radius:0 4px 4px 0;font-size:.85rem;color:#555;line-height:1.6}
 .note code{background:#fff;padding:.1rem .3rem;border-radius:3px}
@@ -237,11 +256,26 @@ button:disabled{background:#9bb4cc}
 #status{margin-top:1rem;text-align:center;font-weight:600;min-height:1.5rem}
 .ok{color:#1a7f37}.ng{color:#b00}
 </style></head><body>
-<h1>画像を送る</h1>
-<p class="lead">選んだ画像を電子ペーパーに表示します。</p>
+<h1>電子ペーパーに送る</h1>
+<p class="lead">選んだ画像、または書いた文字を表示します。</p>
+<div class="tabs">
+<button type="button" id="tab-image" class="on">画像</button>
+<button type="button" id="tab-text">テキスト</button>
+</div>
+<div id="pane-image">
 <label class="pick" for="file">画像を選ぶ</label>
 <input type="file" id="file" accept="image/*">
 <p class="note" id="note"></p>
+</div>
+<div id="pane-text" hidden>
+<textarea id="text" rows="4" placeholder="表示する文字&#10;改行するとそのまま改行されます"></textarea>
+<div class="size">
+<label>幅<input type="number" id="tw" min="16" max="2000" step="1" value="%W%"></label>
+<label>高さ<input type="number" id="th" min="16" max="2000" step="1" value="%H%"></label>
+<button type="button" id="swap">縦横を入れ替え</button>
+</div>
+<p class="hint">本体の画面は %W% x %H% です。同じ大きさにすると、拡大されずいちばんきれいに出ます。</p>
+</div>
 <canvas id="preview"></canvas>
 <button id="send" disabled>送信</button>
 <div id="status"></div>
@@ -252,10 +286,17 @@ const file = document.getElementById('file');
 const preview = document.getElementById('preview');
 const send = document.getElementById('send');
 const status = document.getElementById('status');
+const text = document.getElementById('text');
+const tw = document.getElementById('tw');
+const th = document.getElementById('th');
 let blob = null;
 let name = 'image.png';
 
-function show(text, cls){ status.textContent = text; status.className = cls || ''; }
+// プレビューを描き直す手続き。画像とテキストで中身が変わるだけで、
+// 送るまでの流れ（縮めながら収まる大きさを探す）は同じにしてある。
+let render = null;
+
+function show(message, cls){ status.textContent = message; status.className = cls || ''; }
 
 const URL_TEXT = 'http://192.168.4.1';
 
@@ -280,9 +321,11 @@ function copyUrl() {
 
 // この画面は WiFi の接続用に開かれた簡易ブラウザで、できることが限られる。
 // 制約は OS で違うので、環境に応じて案内を出し分ける。
+// どちらの制約もファイル選択に関わるものなので、テキストはこの画面のまま送れる。
 (function () {
   const note = document.getElementById('note');
   const ua = navigator.userAgent;
+  const TEXT_HINT = '<br><strong>テキスト</strong>なら、この画面のままでも送れます。';
   if (/Android/i.test(ua)) {
     // Android の接続画面はファイル選択に対応しておらず、押しても何も起きない。
     //
@@ -295,6 +338,7 @@ function copyUrl() {
       + 'この画面を閉じて、ブラウザで <a href="' + URL_TEXT + '">' + URL_TEXT + '</a> を開いてください。'
       + 'WiFi は繋いだままにしておいてください。'
       + MOBILE_HINT
+      + TEXT_HINT
       + '<br><button type="button" class="copy" id="copy">URL をコピー</button>';
     document.getElementById('copy').addEventListener('click', copyUrl);
   } else if (/iPhone|iPad|iPod/i.test(ua)) {
@@ -305,6 +349,7 @@ function copyUrl() {
       + '撮った写真を送るときは、先にカメラアプリで撮影しておいてください。'
       + '<br>ブラウザで <a href="' + URL_TEXT + '">' + URL_TEXT + '</a> を開いても使えます。'
       + MOBILE_HINT
+      + TEXT_HINT
       + '<br><button type="button" class="copy" id="copy">URL をコピー</button>';
     document.getElementById('copy').addEventListener('click', copyUrl);
   } else {
@@ -326,21 +371,130 @@ function load(f) {
   });
 }
 
-// 指定の倍率で描き直す
-function draw(img, scale) {
-  preview.width = Math.max(1, Math.round(img.naturalWidth * scale));
-  preview.height = Math.max(1, Math.round(img.naturalHeight * scale));
+function context(w, h) {
+  preview.width = Math.max(1, Math.round(w));
+  preview.height = Math.max(1, Math.round(h));
   const ctx = preview.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, preview.width, preview.height);
+  return ctx;
+}
+
+// 指定の倍率で描き直す
+function drawImage(img, scale) {
+  const ctx = context(img.naturalWidth * scale, img.naturalHeight * scale);
   ctx.drawImage(img, 0, 0, preview.width, preview.height);
+}
+
+// 折り返しの単位。日本語は語の切れ目が無いので 1 文字ずつ送るが、
+// 英数字とアドレスは途中で切れると読めなくなるので塊のまま扱う。
+function tokenize(line) {
+  return line.match(/[A-Za-z0-9@._:\/+-]+|[\s\S]/g) || [];
+}
+
+// 幅に収まるように折り返す。塊のままでは入らないものは文字単位に割り、
+// 割ったことを呼び出し側に伝える。語の途中で改行するくらいなら、
+// 文字を小さくして 1 行に収めるほうが読みやすいため。
+function wrap(ctx, body, maxWidth) {
+  const lines = [];
+  let broken = false;
+  for (const paragraph of body.split('\n')) {
+    let current = '';
+    for (const token of tokenize(paragraph)) {
+      let parts = [token];
+      if (ctx.measureText(token).width > maxWidth) {
+        parts = Array.from(token);
+        broken = broken || parts.length > 1;
+      }
+      for (const part of parts) {
+        if (current !== '' && ctx.measureText(current + part).width > maxWidth) {
+          lines.push(current);
+          current = (part === ' ') ? '' : part;
+        } else {
+          current += part;
+        }
+      }
+    }
+    lines.push(current);
+  }
+  return { lines: lines, broken: broken };
+}
+
+function widest(ctx, lines) {
+  let max = 0;
+  for (const line of lines) {
+    max = Math.max(max, ctx.measureText(line).width);
+  }
+  return max;
+}
+
+function fontOf(size) {
+  return 'bold ' + size + 'px "Hiragino Sans","Noto Sans JP",sans-serif';
+}
+
+// 枠に収まる最大の文字の大きさを二分探索で決める。
+// 1 段ずつ試すと文字数が多いときに時間がかかる。
+function fit(ctx, body, innerWidth, innerHeight, allowBroken) {
+  let low = 4;
+  let high = innerHeight;
+  let best = null;
+  while (low <= high) {
+    const size = (low + high) >> 1;
+    ctx.font = fontOf(size);
+    const wrapped = wrap(ctx, body, innerWidth);
+    const lineHeight = Math.ceil(size * 1.35);
+    const fits = (allowBroken || !wrapped.broken)
+      && wrapped.lines.length * lineHeight <= innerHeight
+      && widest(ctx, wrapped.lines) <= innerWidth;
+    if (fits) {
+      best = { lines: wrapped.lines, size: size, lineHeight: lineHeight };
+      low = size + 1;
+    } else {
+      high = size - 1;
+    }
+  }
+  return best;
+}
+
+// 文字を画像にする。
+// 電子ペーパーは階調が粗く細い線が飛ぶので、太字で大きく描く。
+// 大きさは枠に収まる最大を探して決める。指定した枠は機種の画面と同じとは限らず、
+// 文字数も毎回違うので、固定の値では入り切らないか小さすぎるかのどちらかになる。
+function drawText(body, width, height) {
+  const ctx = context(width, height);
+  if (body.trim() === '') {
+    return;
+  }
+
+  // 余白。ベゼルに隠れる分と、名刺として見たときの見栄えの両方から取る。
+  const padding = Math.round(Math.min(preview.width, preview.height) * 0.08);
+  const innerWidth = Math.max(1, preview.width - padding * 2);
+  const innerHeight = Math.max(1, preview.height - padding * 2);
+
+  // まず語を割らずに収まる大きさを探し、見つからなければ割ることを許して探し直す。
+  // 1 文字が枠の幅に入らないほど長い語だけが後者に落ちる。
+  const best = fit(ctx, body, innerWidth, innerHeight, false)
+    || fit(ctx, body, innerWidth, innerHeight, true);
+  if (best === null) {
+    return;
+  }
+
+  ctx.font = fontOf(best.size);
+  ctx.fillStyle = '#000';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let y = (preview.height - best.lines.length * best.lineHeight) / 2 + best.lineHeight / 2;
+  for (const line of best.lines) {
+    ctx.fillText(line, preview.width / 2, y);
+    y += best.lineHeight;
+  }
 }
 
 // 本体が受け取れる大きさに収まるまで、圧縮を強めながら小さくしていく。
 // 試す回数が多いとスマホ側の負荷が大きいので、段階は絞ってある。
-async function encode(img, baseScale) {
+async function encode() {
   for (let step = 0; step < 3; step++) {
-    draw(img, baseScale * Math.pow(0.7, step));
+    render(Math.pow(0.7, step));
 
     // 図や文字の画像は PNG のまま送りたいので、最初だけ PNG を試す
     if (step === 0) {
@@ -353,6 +507,22 @@ async function encode(img, baseScale) {
     }
   }
   return null;
+}
+
+// 描き直してから、送れる形になるまで試す。画像とテキストで共通。
+async function prepare() {
+  send.disabled = true;
+  blob = null;
+  const encoded = await encode();
+  preview.style.display = 'block';
+  if (!encoded) {
+    show('大きすぎて送れません', 'ng');
+    return;
+  }
+  blob = encoded.data;
+  name = 'image.' + encoded.ext;
+  send.disabled = false;
+  show(preview.width + ' x ' + preview.height + ' / ' + Math.round(blob.size / 1024) + ' KB');
 }
 
 file.addEventListener('change', async () => {
@@ -369,23 +539,74 @@ file.addEventListener('change', async () => {
     const sameOrientation = (img.naturalWidth > img.naturalHeight) === (W > H);
     const boxW = sameOrientation ? W : H;
     const boxH = sameOrientation ? H : W;
-    const scale = Math.min(1, boxW / img.naturalWidth, boxH / img.naturalHeight);
+    const base = Math.min(1, boxW / img.naturalWidth, boxH / img.naturalHeight);
 
-    const encoded = await encode(img, scale);
-    preview.style.display = 'block';
-
-    if (!encoded) {
-      show('この画像は大きすぎて送れません', 'ng');
-      return;
-    }
-    blob = encoded.data;
-    name = 'image.' + encoded.ext;
-    send.disabled = false;
-    show(preview.width + ' x ' + preview.height + ' / ' + Math.round(blob.size / 1024) + ' KB');
+    render = scale => drawImage(img, base * scale);
+    await prepare();
   } catch (e) {
     show('この画像は読み込めませんでした', 'ng');
   }
 });
+
+function size(input, fallback) {
+  const value = Math.round(Number(input.value));
+  if (!isFinite(value) || value < 16) return fallback;
+  return Math.min(value, 2000);
+}
+
+// 入力のたびに描き直すと、打っている間ずっと二分探索と PNG の生成が走る。
+// 手が止まってからにする。
+let pending = 0;
+function scheduleText() {
+  clearTimeout(pending);
+  pending = setTimeout(async () => {
+    const body = text.value;
+    if (body.trim() === '') {
+      preview.style.display = 'none';
+      send.disabled = true;
+      blob = null;
+      show('');
+      return;
+    }
+    show('作成中...');
+    const width = size(tw, W);
+    const height = size(th, H);
+    render = scale => drawText(body, width * scale, height * scale);
+    await prepare();
+  }, 300);
+}
+
+text.addEventListener('input', scheduleText);
+tw.addEventListener('change', scheduleText);
+th.addEventListener('change', scheduleText);
+
+document.getElementById('swap').addEventListener('click', () => {
+  const width = tw.value;
+  tw.value = th.value;
+  th.value = width;
+  scheduleText();
+});
+
+// 画像とテキストを行き来しても、送るのは最後に作ったものだけにする。
+// 切り替えた時点でプレビューを捨てて、選び直してもらう。
+function select(mode) {
+  const isText = mode === 'text';
+  document.getElementById('pane-image').hidden = isText;
+  document.getElementById('pane-text').hidden = !isText;
+  document.getElementById('tab-image').className = isText ? '' : 'on';
+  document.getElementById('tab-text').className = isText ? 'on' : '';
+
+  clearTimeout(pending);
+  blob = null;
+  render = null;
+  send.disabled = true;
+  preview.style.display = 'none';
+  show('');
+  if (isText) { scheduleText(); }
+}
+
+document.getElementById('tab-image').addEventListener('click', () => select('image'));
+document.getElementById('tab-text').addEventListener('click', () => select('text'));
 
 send.addEventListener('click', () => {
   if (!blob) return;
