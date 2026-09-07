@@ -35,6 +35,8 @@ export type CardRequest = {
   account: string
   /** QR にする URL。空なら QR を置かない */
   url: string
+  /** 枠いっぱい（自動）に対する割合。1 で自動のまま */
+  share: number
   width: number
   height: number
 }
@@ -769,12 +771,28 @@ function fitLines(ctx, texts, maxWidth, maxHeight, wrapping) {
 // 折り返しを先に許すと「江本」「光晴」と名前を割ってでも字を大きくしてしまう。
 // ただし、そのために読めない大きさになるなら折り返しに任せる。
 // テキストの側と同じ考え方で、境目も同じ READABLE を使う。
-function fitCard(ctx, texts, maxWidth, maxHeight) {
+//
+// share は枠いっぱい（自動）に対する割合。小さくしたいときだけ 1 未満にする。
+function fitCard(ctx, texts, maxWidth, maxHeight, share) {
   const single = fitLines(ctx, texts, maxWidth, maxHeight, false);
-  if (single !== null && single.size >= READABLE) {
-    return single;
+  const best = (single !== null && single.size >= READABLE)
+    ? single
+    : (fitLines(ctx, texts, maxWidth, maxHeight, true) || single);
+  if (best === null) {
+    return null;
   }
-  return fitLines(ctx, texts, maxWidth, maxHeight, true) || single;
+
+  // 枠いっぱいを上限に、指定の割合まで小さくする。ここもテキストと同じで、
+  // 割合の指定で READABLE より小さくはしない。自動でそこまで小さくなる
+  // 場合（文字が多いとき）は、収めるほうを優先する。
+  const floor = Math.min(best.size, READABLE);
+  const size = Math.max(floor, Math.round(best.size * share));
+  if (size === best.size) {
+    return best;
+  }
+
+  // 小さくすると 1 行に入る文字数が変わるので、折り返しは取り直す
+  return layoutLines(ctx, texts, size, maxWidth, true) || best;
 }
 
 function paintLines(ctx, block, centerX, top) {
@@ -817,11 +835,12 @@ function paintQr(ctx, modules, left, top, unit) {
  * card は { image, title, subtitle, account, url }。
  * image は { element, width, height } で、読み込みは呼び出し側が済ませておく。
  * url は QR にする。長すぎて入らないものは qrFits で先に弾いておくこと。
+ * share は文字の大きさ。枠いっぱい（自動）に対する割合で、1 なら自動のまま。
  *
  * 返り値は { drawn, size }。drawn が false なら枠に入らなかった。
  * size は実際に使ったタイトルの大きさ（文字が無ければ 0）。
  */
-function paintCard(ctx, width, height, card) {
+function paintCard(ctx, width, height, card, share) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, width, height);
 
@@ -886,7 +905,7 @@ function paintCard(ctx, width, height, card) {
       }
     }
     if (list.indexOf('text') >= 0) {
-      const block = fitCard(ctx, texts, columnWidth, Math.max(1, free - taken));
+      const block = fitCard(ctx, texts, columnWidth, Math.max(1, free - taken), share);
       if (block === null) {
         return false;
       }
@@ -983,7 +1002,7 @@ window.drawCard = function (request) {
         subtitle: request.subtitle,
         account: request.account,
         url: request.url,
-      });
+      }, request.share);
       reply({
         id: request.id,
         // 収まらなかったときの絵は送らせないので、作らない

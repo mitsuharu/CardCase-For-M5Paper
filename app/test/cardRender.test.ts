@@ -36,6 +36,8 @@ type PaintCard = (
   width: number,
   height: number,
   card: Card,
+  /** 枠いっぱい（自動）に対する割合 */
+  share: number,
 ) => { drawn: boolean; size: number }
 
 type Drawn = { text: string; x: number; y: number; size: number }
@@ -87,7 +89,7 @@ const URL = 'https://x.com/mitsuharu_e'
 test('項目が何も無ければ描かない', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  assert.deepEqual(paintCard(ctx, 540, 960, {}), { drawn: false, size: 0 })
+  assert.deepEqual(paintCard(ctx, 540, 960, {}, 1), { drawn: false, size: 0 })
   assert.equal(ctx.drawn.length, 0)
   assert.equal(ctx.images.length, 0)
 })
@@ -95,7 +97,7 @@ test('項目が何も無ければ描かない', () => {
 test('タイトルとサブタイトルを並べる', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  const result = paintCard(ctx, 540, 960, { title: '江本 光晴', subtitle: 'Mitsuharu Emoto' })
+  const result = paintCard(ctx, 540, 960, { title: '江本 光晴', subtitle: 'Mitsuharu Emoto' }, 1)
   assert.ok(result.drawn)
   assert.deepEqual(ctx.drawn.map((line) => line.text), ['江本 光晴', 'Mitsuharu Emoto'])
 })
@@ -108,7 +110,7 @@ test('サブタイトルとアカウントはタイトルより小さい', () =>
     title: '江本 光晴',
     subtitle: 'Mitsuharu Emoto',
     account: '@mitsuharu_e',
-  })
+  }, 1)
   const [title, subtitle, account] = ctx.drawn
   assert.ok(title.size > subtitle.size, `${title.size} > ${subtitle.size}`)
   assert.ok(subtitle.size > account.size, `${subtitle.size} > ${account.size}`)
@@ -119,7 +121,7 @@ test('空の項目は場所を取らず、残りが真ん中に来る', () => {
   // 埋めなかったぶんが空いたままだと、名刺として見たときに間が抜ける。
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 540, 960, { title: '江本 光晴' })
+  paintCard(ctx, 540, 960, { title: '江本 光晴' }, 1)
   const [line] = ctx.drawn
   assert.ok(Math.abs(line.y - 480) < 2, `${line.y}`)
   assert.equal(line.x, 270)
@@ -133,7 +135,7 @@ test('縦長のときは、画像・文字・QR を縦に積む', () => {
     title: '江本 光晴',
     subtitle: 'Mitsuharu Emoto',
     url: URL,
-  })
+  }, 1)
   assert.ok(result.drawn)
 
   const image = ctx.images[0]
@@ -153,7 +155,7 @@ test('横長で画像があるときは、画像を左に置いて右に積む',
     title: '江本 光晴',
     subtitle: 'Mitsuharu Emoto',
     url: URL,
-  })
+  }, 1)
   assert.ok(result.drawn)
 
   const image = ctx.images[0]
@@ -166,14 +168,14 @@ test('横長で画像があるときは、画像を左に置いて右に積む',
 test('横長でも画像が無ければ 1 列に積む', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 960, 540, { title: '江本 光晴', url: URL })
+  paintCard(ctx, 960, 540, { title: '江本 光晴', url: URL }, 1)
   assert.equal(ctx.drawn[0].x, 480)
 })
 
 test('画像だけでも名刺になる', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  const result = paintCard(ctx, 540, 960, { image: IMAGE })
+  const result = paintCard(ctx, 540, 960, { image: IMAGE }, 1)
   // 文字が無いので大きさは 0 になるが、描けている
   assert.deepEqual(result, { drawn: true, size: 0 })
   assert.equal(ctx.images.length, 1)
@@ -182,7 +184,7 @@ test('画像だけでも名刺になる', () => {
 test('画像は縦横の比を変えずに収める', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 540, 960, { image: { element: 'icon', width: 400, height: 200 } })
+  paintCard(ctx, 540, 960, { image: { element: 'icon', width: 400, height: 200 } }, 1)
   const image = ctx.images[0]
   assert.equal(image.width, image.height * 2)
 })
@@ -191,7 +193,7 @@ test('QR の升目は整数の大きさで描く', () => {
   // 電子ペーパーは階調が粗く、半端な大きさで描くと升目の境が濁って読めない。
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 540, 960, { url: URL })
+  paintCard(ctx, 540, 960, { url: URL }, 1)
   // 最初の 1 つは名刺の下地、次が QR の下地。そのあとが升目。
   const modules = ctx.rects.slice(2)
   assert.ok(modules.length > 100)
@@ -274,10 +276,37 @@ test('QR の四隅にはファインダが立つ', () => {
   }
 })
 
+test('割合を下げると文字が小さくなる', () => {
+  // 自動が上限で、それより大きくはできない。テキストの側と同じ扱い。
+  const { paintCard } = load()
+  const card = { title: '江本 光晴', subtitle: 'Mitsuharu Emoto' }
+  const auto = paintCard(fakeContext(), 540, 960, card, 1)
+  const half = paintCard(fakeContext(), 540, 960, card, 0.5)
+  assert.ok(auto.size > 0)
+  assert.equal(half.size, Math.round(auto.size * 0.5))
+})
+
+test('割合を下げても 12px より小さくはしない', () => {
+  // 電子ペーパーでは、これを切ると画数の多い漢字が潰れて読めない。
+  const { paintCard } = load()
+  const card = { title: '江本 光晴' }
+  assert.ok(paintCard(fakeContext(), 540, 960, card, 1).size > 12)
+  assert.equal(paintCard(fakeContext(), 540, 960, card, 0.05).size, 12)
+})
+
+test('割合を下げてもレイアウトは中央のまま', () => {
+  // 小さくしたぶんは上下に散らさず、詰めて真ん中に置く。
+  const { paintCard } = load()
+  const ctx = fakeContext()
+  paintCard(ctx, 540, 960, { title: '江本 光晴', subtitle: 'Mitsuharu Emoto' }, 0.5)
+  const middle = (ctx.drawn[0].y + ctx.drawn[ctx.drawn.length - 1].y) / 2
+  assert.ok(Math.abs(middle - 480) < 30, `${middle}`)
+})
+
 test('URL が空なら QR を置かない', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 540, 960, { title: '江本 光晴', url: '   ' })
+  paintCard(ctx, 540, 960, { title: '江本 光晴', url: '   ' }, 1)
   // 名刺の下地を塗るだけで、升目は描かれない
   assert.equal(ctx.rects.length, 1)
 })

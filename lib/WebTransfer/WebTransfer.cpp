@@ -323,6 +323,11 @@ button:disabled{background:#9bb4cc}
 <label>高さ<input type="number" id="card-h" min="16" max="2000" step="1" value="%H%"></label>
 <button type="button" id="card-swap">縦横を入れ替え</button>
 </div>
+<div class="row">
+<span class="caption">文字の大きさ</span>
+<input type="range" id="card-ratio" min="40" max="100" step="5" value="100">
+<span class="value" id="card-ratio-value">自動</span>
+</div>
 <p class="hint">空にした項目は詰めて並べます。横長にすると画像を左、文字と QR を右に置きます。</p>
 </div>
 <canvas id="preview"></canvas>
@@ -347,6 +352,7 @@ const cardUrl = document.getElementById('card-url');
 const cardW = document.getElementById('card-w');
 const cardH = document.getElementById('card-h');
 const cardClear = document.getElementById('card-clear');
+const cardRatio = document.getElementById('card-ratio');
 // 名刺に載せる画像。選ばなくてもよい。
 let cardImage = null;
 let alignment = 'center';
@@ -1159,12 +1165,28 @@ function fitLines(ctx, texts, maxWidth, maxHeight, wrapping) {
 // 折り返しを先に許すと「江本」「光晴」と名前を割ってでも字を大きくしてしまう。
 // ただし、そのために読めない大きさになるなら折り返しに任せる。
 // テキストの側と同じ考え方で、境目も同じ READABLE を使う。
-function fitCard(ctx, texts, maxWidth, maxHeight) {
+//
+// share は枠いっぱい（自動）に対する割合。小さくしたいときだけ 1 未満にする。
+function fitCard(ctx, texts, maxWidth, maxHeight, share) {
   const single = fitLines(ctx, texts, maxWidth, maxHeight, false);
-  if (single !== null && single.size >= READABLE) {
-    return single;
+  const best = (single !== null && single.size >= READABLE)
+    ? single
+    : (fitLines(ctx, texts, maxWidth, maxHeight, true) || single);
+  if (best === null) {
+    return null;
   }
-  return fitLines(ctx, texts, maxWidth, maxHeight, true) || single;
+
+  // 枠いっぱいを上限に、指定の割合まで小さくする。ここもテキストと同じで、
+  // 割合の指定で READABLE より小さくはしない。自動でそこまで小さくなる
+  // 場合（文字が多いとき）は、収めるほうを優先する。
+  const floor = Math.min(best.size, READABLE);
+  const size = Math.max(floor, Math.round(best.size * share));
+  if (size === best.size) {
+    return best;
+  }
+
+  // 小さくすると 1 行に入る文字数が変わるので、折り返しは取り直す
+  return layoutLines(ctx, texts, size, maxWidth, true) || best;
 }
 
 function paintLines(ctx, block, centerX, top) {
@@ -1207,11 +1229,12 @@ function paintQr(ctx, modules, left, top, unit) {
  * card は { image, title, subtitle, account, url }。
  * image は { element, width, height } で、読み込みは呼び出し側が済ませておく。
  * url は QR にする。長すぎて入らないものは qrFits で先に弾いておくこと。
+ * share は文字の大きさ。枠いっぱい（自動）に対する割合で、1 なら自動のまま。
  *
  * 返り値は { drawn, size }。drawn が false なら枠に入らなかった。
  * size は実際に使ったタイトルの大きさ（文字が無ければ 0）。
  */
-function paintCard(ctx, width, height, card) {
+function paintCard(ctx, width, height, card, share) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, width, height);
 
@@ -1276,7 +1299,7 @@ function paintCard(ctx, width, height, card) {
       }
     }
     if (list.indexOf('text') >= 0) {
-      const block = fitCard(ctx, texts, columnWidth, Math.max(1, free - taken));
+      const block = fitCard(ctx, texts, columnWidth, Math.max(1, free - taken), share);
       if (block === null) {
         return false;
       }
@@ -1337,9 +1360,9 @@ function drawText(body, width, height, share, align, wrapping) {
 // 名刺が枠に収まったか。収まらなければ送らせない。
 let cardDrawn = false;
 
-function drawCard(card, width, height) {
+function drawCard(card, width, height, share) {
   const ctx = context(width, height);
-  const result = paintCard(ctx, preview.width, preview.height, card);
+  const result = paintCard(ctx, preview.width, preview.height, card, share);
   cardDrawn = result.drawn;
   drawnSize = result.size;
 }
@@ -1472,7 +1495,7 @@ function scheduleCard() {
     show('作成中...');
     const width = size(cardW, W);
     const height = size(cardH, H);
-    render = scale => drawCard(card, width * scale, height * scale);
+    render = scale => drawCard(card, width * scale, height * scale, cardShare());
     await prepare();
 
     // 文字が多すぎると、どの大きさでも収まらず何も描けない。
@@ -1510,6 +1533,19 @@ for (const input of [cardTitle, cardSubtitle, cardAccount, cardUrl]) {
 }
 cardW.addEventListener('change', scheduleCard);
 cardH.addEventListener('change', scheduleCard);
+
+// 自動で決めた大きさに対する割合。テキストの側と同じ扱いにしてある。
+function cardShare() {
+  const value = Number(cardRatio.value);
+  return (isFinite(value) && value >= 40 && value <= 100) ? value / 100 : 1;
+}
+
+cardRatio.addEventListener('input', () => {
+  const percent = Math.round(cardShare() * 100);
+  document.getElementById('card-ratio-value').textContent =
+    percent === 100 ? '自動' : ('自動の ' + percent + '%');
+  scheduleCard();
+});
 
 document.getElementById('card-swap').addEventListener('click', () => {
   const width = cardW.value;

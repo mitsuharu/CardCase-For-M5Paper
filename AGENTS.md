@@ -95,7 +95,28 @@ using String = std::string;
 
 ## ビルドと書き込み
 
-PlatformIO CLI は `~/.platformio/penv/bin/pio` にある。
+### PlatformIO を用意する
+
+PlatformIO Core は `~/.platformio/penv/bin/pio` にある。**VS Code の PlatformIO IDE 拡張がここに入れる**ので、拡張を使っているなら別に入れる必要はない。ただし **PATH には入っていない**ので、そのまま `pio` と打っても見つからない。
+
+```bash
+export PATH="$HOME/.platformio/penv/bin:$PATH"
+pio --version
+```
+
+拡張を使っていない場合は、CI（`.github/workflows/ci.yml`）と同じやり方で入れる。Python は `.python-version` に合わせる。
+
+```bash
+python3 -m venv ~/.venvs/platformio
+~/.venvs/platformio/bin/pip install platformio
+export PATH="$HOME/.venvs/platformio/bin:$PATH"
+```
+
+Homebrew（`brew install platformio`）でも入るが、**拡張が入れた Core と二重になる**。どちらか一方にしておく。二つあると、拡張から通るビルドが CLI では通らない（またはその逆）といったことが起きる。
+
+**はじめてのビルドではツールチェーンを取りに行くので数分かかる**（`espressif32@6.12.0` と Xtensa / RISC-V のツールチェーンで 1GB 近い）。`~/.platformio/packages` に残るので、二度目からは速い。
+
+### 動かす
 
 ```bash
 # テスト（実機不要）
@@ -297,6 +318,7 @@ cd app && npm test
 - **高さの取り分は重みで割り、文字は残りをもらう**（画像 5・文字 3・QR 4）。実際に使う高さは中身で決まるので、重みは「どれを大きく見せるか」の目安でしかない。文字も取り分で切ると、行数の多い名前で「入らない」になってしまう。他が使わなかったぶんが空いているのに、である
 - **タイトルは折り返さずに入る大きさを先に採る。**テキストの側と同じ理由で、折り返しを先に許すと「江本」「光晴」と名前を割ってでも字を大きくしてしまう。読めない大きさ（`READABLE`）まで落ちるときだけ折り返しに任せる
 - サブタイトルとアカウントの大きさは、タイトルに対する比（0.55 と 0.45）で決める。3 つが連動するので、二分探索するのはタイトルの大きさだけでよい
+- **文字の大きさは、テキストと同じく自動を基準にした割合で指定する**（40〜100%）。3 つが連動するので、つまみは 1 つでよい。下限が `READABLE` なのも同じ。名刺は枠いっぱいに組むと字が大きくなりすぎることがあり、そのための逃げ道になる
 
 **QR はブラウザ側で作る。**本体にもアプリにも QR を作る手段が無く、この画面はインターネットに出られないので外から持ってくることもできない。用途を URL 1 本に絞り、**8 ビットモード・誤り訂正 M・型番 1〜10**（213 バイトまで）だけを扱う。そのぶん持つ表が短く済む。
 

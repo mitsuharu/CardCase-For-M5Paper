@@ -35,6 +35,15 @@ type Props = {
 // 画面の長い方に合わせておけば、名刺の中で使う大きさには足りる。
 const IMAGE_BOX = 800
 
+// スライダーは RN の標準に無く、そのために依存を足すほどのものでもない。
+// TextComposer と同じ段にしてある。
+const SHARES = [
+  { value: 1, label: '自動' },
+  { value: 0.8, label: '80%' },
+  { value: 0.6, label: '60%' },
+  { value: 0.4, label: '40%' },
+]
+
 // キーボードの上に出す「閉じる」。
 // 幅と高さは number-pad で、iOS のこのキーボードには改行も完了も無い。
 const ACCESSORY_ID = 'cardcase-card-input'
@@ -67,6 +76,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
   const [url, setUrl] = useState('')
   const [width, setWidth] = useState(String(screenWidth))
   const [height, setHeight] = useState(String(screenHeight))
+  const [share, setShare] = useState(1)
   const [busy, setBusy] = useState(false)
 
   // 呼び出し側が毎回作り直す関数を渡してきても、描き直しの合図が
@@ -88,6 +98,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
       subtitle,
       account,
       url: url.trim(),
+      share,
       width: size(width, screenWidth),
       height: size(height, screenHeight),
     }
@@ -106,7 +117,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
       return
     }
     webview.current?.injectJavaScript(`window.drawCard(${JSON.stringify(request)}); true;`)
-  }, [account, height, image, screenHeight, screenWidth, subtitle, title, url, width])
+  }, [account, height, image, screenHeight, screenWidth, share, subtitle, title, url, width])
 
   // 1 文字ごとに描き直すと、そのたびに二分探索と PNG の生成が走る。
   // 手が止まってからにする。
@@ -291,6 +302,20 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
         </Pressable>
       </View>
 
+      <View style={styles.row}>
+        <Text style={styles.caption}>文字の大きさ</Text>
+        {SHARES.map((option) => (
+          <Pressable
+            key={option.value}
+            style={[styles.chip, share === option.value && styles.chipOn]}
+            onPress={() => setShare(option.value)}>
+            <Text style={[styles.chipLabel, share === option.value && styles.chipLabelOn]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
       <Text style={styles.hint}>
         空にした項目は詰めて並べます。横長にすると画像を左、文字と QR を右に置きます。
       </Text>
@@ -340,7 +365,9 @@ const styles = StyleSheet.create({
     borderColor: '#1257a0',
     borderRadius: 6,
   },
+  chipOn: { backgroundColor: '#1257a0' },
   chipLabel: { fontSize: 13, fontWeight: '600', color: '#1257a0' },
+  chipLabelOn: { color: '#fff' },
   disabled: { opacity: 0.5 },
   hint: { marginTop: 10, fontSize: 12, color: '#777', lineHeight: 18 },
   accessory: {
