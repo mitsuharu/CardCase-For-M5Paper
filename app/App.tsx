@@ -14,6 +14,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import NfcManager from 'react-native-nfc-manager';
 
+import { CardComposer, type CardResult } from './src/CardComposer';
 import { pickImage, prepareImage, takePhoto, type PreparedImage } from './src/imagePicker';
 import { NfcCancelled, cancelSending, isSupported, sendImage, type Progress } from './src/nfcSender';
 import { TextComposer, type TextResult } from './src/TextComposer';
@@ -31,8 +32,8 @@ const SCREEN_HEIGHT = 800;
  */
 const MAX_BYTES = 24 * 1024;
 
-/** 画像を選んで送るか、その場で書いた文字を送るか */
-type Mode = 'image' | 'text';
+/** 画像を選んで送るか、その場で書いた文字を送るか、項目を並べて名刺にするか */
+type Mode = 'image' | 'text' | 'card';
 
 export default function App() {
   const [supported, setSupported] = useState<boolean | null>(null);
@@ -110,6 +111,29 @@ export default function App() {
     }
   }, []);
 
+  // 名刺も、出来上がるのは同じ画像。違うのは知らせ方だけ。
+  const receiveCard = useCallback((result: CardResult) => {
+    setError(null);
+    setMessage(null);
+    if (result.kind === 'ready') {
+      setTextSize(result.size > 0 ? result.size : null);
+      setImage(result.image);
+      if (result.image.bytes.length > MAX_BYTES) {
+        const seconds = Math.ceil(result.image.bytes.length / 1024 / 5.5);
+        setMessage(`この画像は大きめです。送信に ${seconds} 秒ほどかかります。`);
+      }
+      return;
+    }
+    setTextSize(null);
+    setImage(null);
+    if (result.kind === 'overflow') {
+      setError('文字が多すぎて枠に入りません');
+    }
+    if (result.kind === 'url-too-long') {
+      setError('URL が長すぎて QR にできません');
+    }
+  }, []);
+
   const failText = useCallback((text: string) => {
     setTextSize(null);
     setImage(null);
@@ -164,9 +188,25 @@ export default function App() {
     <SafeAreaProvider>
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.content}>
+      {/*
+        * 入力欄がキーボードに隠れないようにする。
+        *
+        * 名刺は項目が多く、下の方の欄はキーボードに隠れて見えなくなる。
+        * iOS は automaticallyAdjustKeyboardInsets がキーボードのぶんだけ
+        * 余白を足して寄せてくれる（Android は adjustResize が同じことをする）。
+        *
+        * キーボードが出ている間もボタンを押せるように persistTaps も入れる。
+        * 既定では、最初の一押しがキーボードを閉じるだけで消える。
+        */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>CardCase</Text>
-        <Text style={styles.lead}>選んだ画像、または書いた文字を M5Paper に NFC で送ります。</Text>
+        <Text style={styles.lead}>
+          選んだ画像、書いた文字、または名刺を M5Paper に NFC で送ります。
+        </Text>
 
         <View style={styles.row}>
           <Pressable
@@ -181,9 +221,15 @@ export default function App() {
             disabled={busy}>
             <Text style={[styles.tabLabel, mode === 'text' && styles.tabLabelOn]}>テキスト</Text>
           </Pressable>
+          <Pressable
+            style={[styles.button, styles.tab, mode === 'card' && styles.tabOn]}
+            onPress={() => select('card')}
+            disabled={busy}>
+            <Text style={[styles.tabLabel, mode === 'card' && styles.tabLabelOn]}>名刺</Text>
+          </Pressable>
         </View>
 
-        {mode === 'image' ? (
+        {mode === 'image' && (
           <View style={[styles.row, styles.section]}>
             <Pressable
               style={[styles.button, styles.secondary, busy && styles.disabled]}
@@ -198,12 +244,26 @@ export default function App() {
               <Text style={styles.secondaryLabel}>撮影する</Text>
             </Pressable>
           </View>
-        ) : (
+        )}
+
+        {mode === 'text' && (
           <View style={styles.section}>
             <TextComposer
               screenWidth={SCREEN_WIDTH}
               screenHeight={SCREEN_HEIGHT}
               onResult={receiveText}
+              onError={failText}
+            />
+          </View>
+        )}
+
+        {mode === 'card' && (
+          <View style={styles.section}>
+            <CardComposer
+              screenWidth={SCREEN_WIDTH}
+              screenHeight={SCREEN_HEIGHT}
+              maxBytes={MAX_BYTES}
+              onResult={receiveCard}
               onError={failText}
             />
           </View>

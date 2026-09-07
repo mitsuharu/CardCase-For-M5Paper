@@ -1,17 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  InputAccessoryView,
-  Keyboard,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 
 import { bytesFromDataUrl } from './base64'
+import { CloseAccessory, closeAccessoryId } from './CloseAccessory'
 import type { PreparedImage } from './imagePicker'
 import { TEXT_RENDER_HTML, type DrawRequest, type DrawResult } from './textRender'
 
@@ -54,13 +46,9 @@ const SHARES = [
   { value: 0.4, label: '40%' },
 ]
 
-// キーボードの上に出す「閉じる」。
-//
-// 幅と高さは number-pad で、iOS のこのキーボードには改行も完了も無い。
-// 文字の入力欄も複数行なので、改行では閉じられない。どちらも自分では
-// 閉じられないので、アクセサリを付ける。Android は戻るで閉じられる。
-const ACCESSORY_ID = 'cardcase-text-input'
-const accessoryFor = Platform.OS === 'ios' ? ACCESSORY_ID : undefined
+// キーボードの上に出す「閉じる」を付ける入力欄。
+// 欄ごとに別の名前が要る。理由は CloseAccessory.tsx にある。
+const FIELDS = ['text-body', 'text-w', 'text-h']
 
 /** 枠の大きさ。極端な値は描く前に落とす。 */
 function size(input: string, fallback: number): number {
@@ -193,7 +181,7 @@ export function TextComposer({ screenWidth, screenHeight, onResult, onError }: P
         placeholderTextColor="#999"
         multiline
         textAlignVertical="top"
-        inputAccessoryViewID={accessoryFor}
+        inputAccessoryViewID={closeAccessoryId('text-body')}
       />
 
       <View style={styles.row}>
@@ -204,7 +192,7 @@ export function TextComposer({ screenWidth, screenHeight, onResult, onError }: P
             value={width}
             onChangeText={setWidth}
             keyboardType="number-pad"
-            inputAccessoryViewID={accessoryFor}
+            inputAccessoryViewID={closeAccessoryId('text-w')}
           />
         </View>
         <View style={styles.field}>
@@ -214,7 +202,7 @@ export function TextComposer({ screenWidth, screenHeight, onResult, onError }: P
             value={height}
             onChangeText={setHeight}
             keyboardType="number-pad"
-            inputAccessoryViewID={accessoryFor}
+            inputAccessoryViewID={closeAccessoryId('text-h')}
           />
         </View>
         <Pressable
@@ -274,15 +262,9 @@ export function TextComposer({ screenWidth, screenHeight, onResult, onError }: P
         拡大されずいちばんきれいに出ます。
       </Text>
 
-      {Platform.OS === 'ios' && (
-        <InputAccessoryView nativeID={ACCESSORY_ID}>
-          <View style={styles.accessory}>
-            <Pressable style={styles.close} onPress={() => Keyboard.dismiss()}>
-              <Text style={styles.closeLabel}>閉じる</Text>
-            </Pressable>
-          </View>
-        </InputAccessoryView>
-      )}
+      {FIELDS.map((name) => (
+        <CloseAccessory key={name} name={name} />
+      ))}
 
       <View style={styles.hidden} pointerEvents="none">
         <WebView
@@ -332,16 +314,6 @@ const styles = StyleSheet.create({
   chipLabel: { fontSize: 13, fontWeight: '600', color: '#1257a0' },
   chipLabelOn: { color: '#fff' },
   hint: { marginTop: 10, fontSize: 12, color: '#777', lineHeight: 18 },
-  accessory: {
-    alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#f4f4f5',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#c8c8cc',
-  },
-  close: { paddingVertical: 6, paddingHorizontal: 12 },
-  closeLabel: { fontSize: 16, fontWeight: '600', color: '#1257a0' },
   // 絵を作るためだけの WebView。見せる必要はないが、
   // 大きさを 0 にすると端末によっては動かないので 1px 残す。
   hidden: { position: 'absolute', width: 1, height: 1, opacity: 0 },
