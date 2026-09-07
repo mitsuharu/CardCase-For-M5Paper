@@ -1,17 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  InputAccessoryView,
-  Keyboard,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 
 import { bytesFromDataUrl } from './base64'
+import { CloseAccessory, closeAccessoryId } from './CloseAccessory'
 import { pickImage, takePhoto, toDataUrl, type PreparedImage } from './imagePicker'
 import { TEXT_RENDER_HTML, type CardRequest, type DrawResult } from './textRender'
 
@@ -46,10 +38,9 @@ const SHARES = [
   { value: 0.4, label: '40%' },
 ]
 
-// キーボードの上に出す「閉じる」。
-// 幅と高さは number-pad で、iOS のこのキーボードには改行も完了も無い。
-const ACCESSORY_ID = 'cardcase-card-input'
-const accessoryFor = Platform.OS === 'ios' ? ACCESSORY_ID : undefined
+// キーボードの上に出す「閉じる」を付ける入力欄。
+// 欄ごとに別の名前が要る。理由は CloseAccessory.tsx にある。
+const FIELDS = ['card-title', 'card-subtitle', 'card-account', 'card-url', 'card-w', 'card-h']
 
 /** 枠の大きさ。極端な値は描く前に落とす。 */
 function size(input: string, fallback: number): number {
@@ -230,7 +221,7 @@ export function CardComposer({ screenWidth, screenHeight, maxBytes, onResult, on
           onChangeText={setTitle}
           placeholder="山田 太郎"
           placeholderTextColor="#999"
-          inputAccessoryViewID={accessoryFor}
+          inputAccessoryViewID={closeAccessoryId('card-title')}
         />
       </View>
 
@@ -242,7 +233,7 @@ export function CardComposer({ screenWidth, screenHeight, maxBytes, onResult, on
           onChangeText={setSubtitle}
           placeholder="Taro Yamada"
           placeholderTextColor="#999"
-          inputAccessoryViewID={accessoryFor}
+          inputAccessoryViewID={closeAccessoryId('card-subtitle')}
         />
       </View>
 
@@ -255,7 +246,7 @@ export function CardComposer({ screenWidth, screenHeight, maxBytes, onResult, on
           placeholder="@example"
           placeholderTextColor="#999"
           autoCapitalize="none"
-          inputAccessoryViewID={accessoryFor}
+          inputAccessoryViewID={closeAccessoryId('card-account')}
         />
       </View>
 
@@ -270,7 +261,7 @@ export function CardComposer({ screenWidth, screenHeight, maxBytes, onResult, on
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
-          inputAccessoryViewID={accessoryFor}
+          inputAccessoryViewID={closeAccessoryId('card-url')}
         />
       </View>
 
@@ -282,7 +273,7 @@ export function CardComposer({ screenWidth, screenHeight, maxBytes, onResult, on
             value={width}
             onChangeText={setWidth}
             keyboardType="number-pad"
-            inputAccessoryViewID={accessoryFor}
+            inputAccessoryViewID={closeAccessoryId('card-w')}
           />
         </View>
         <View style={styles.number}>
@@ -292,7 +283,7 @@ export function CardComposer({ screenWidth, screenHeight, maxBytes, onResult, on
             value={height}
             onChangeText={setHeight}
             keyboardType="number-pad"
-            inputAccessoryViewID={accessoryFor}
+            inputAccessoryViewID={closeAccessoryId('card-h')}
           />
         </View>
         <Pressable
@@ -323,15 +314,9 @@ export function CardComposer({ screenWidth, screenHeight, maxBytes, onResult, on
         空にした項目は詰めて並べます。横長にすると画像を左、文字と QR を右に置きます。
       </Text>
 
-      {Platform.OS === 'ios' && (
-        <InputAccessoryView nativeID={ACCESSORY_ID}>
-          <View style={styles.accessory}>
-            <Pressable style={styles.close} onPress={() => Keyboard.dismiss()}>
-              <Text style={styles.closeLabel}>閉じる</Text>
-            </Pressable>
-          </View>
-        </InputAccessoryView>
-      )}
+      {FIELDS.map((name) => (
+        <CloseAccessory key={name} name={name} />
+      ))}
 
       <View style={styles.hidden} pointerEvents="none">
         <WebView
@@ -373,16 +358,6 @@ const styles = StyleSheet.create({
   chipLabelOn: { color: '#fff' },
   disabled: { opacity: 0.5 },
   hint: { marginTop: 10, fontSize: 12, color: '#777', lineHeight: 18 },
-  accessory: {
-    alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#f4f4f5',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#c8c8cc',
-  },
-  close: { paddingVertical: 6, paddingHorizontal: 12 },
-  closeLabel: { fontSize: 16, fontWeight: '600', color: '#1257a0' },
   // 絵を作るためだけの WebView。見せる必要はないが、
   // 大きさを 0 にすると端末によっては動かないので 1px 残す。
   hidden: { position: 'absolute', width: 1, height: 1, opacity: 0 },

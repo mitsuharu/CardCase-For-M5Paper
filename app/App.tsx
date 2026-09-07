@@ -188,7 +188,21 @@ export default function App() {
     <SafeAreaProvider>
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.content}>
+      {/*
+        * 入力欄がキーボードに隠れないようにする。
+        *
+        * 名刺は項目が多く、下の方の欄はキーボードに隠れて見えなくなる。
+        * iOS は automaticallyAdjustKeyboardInsets がキーボードのぶんだけ
+        * 余白を足して寄せてくれる（Android は adjustResize が同じことをする）。
+        *
+        * キーボードが出ている間もボタンを押せるように persistTaps も入れる。
+        * 既定では、最初の一押しがキーボードを閉じるだけで消える。
+        */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>CardCase</Text>
         <Text style={styles.lead}>
           選んだ画像、書いた文字、または名刺を M5Paper に NFC で送ります。
