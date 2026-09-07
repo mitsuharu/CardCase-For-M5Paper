@@ -27,6 +27,8 @@ type Props = {
   /** 本体の画面。はじめの枠の大きさになる */
   screenWidth: number
   screenHeight: number
+  /** 送る大きさの目安。名刺に写真を載せると PNG では収まらないため */
+  maxBytes: number
   onResult: (result: CardResult) => void
   onError: (message: string) => void
 }
@@ -68,7 +70,7 @@ function size(input: string, fallback: number): number {
  * 描くのは WebView の canvas で、コードは本体の WiFi 画面と同じものを使う。
  * 詳しくは textRender.ts を見ること。
  */
-export function CardComposer({ screenWidth, screenHeight, onResult, onError }: Props) {
+export function CardComposer({ screenWidth, screenHeight, maxBytes, onResult, onError }: Props) {
   const [image, setImage] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
@@ -101,6 +103,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
       share,
       width: size(width, screenWidth),
       height: size(height, screenHeight),
+      maxBytes,
     }
 
     const empty = request.image === null && request.url === ''
@@ -117,7 +120,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
       return
     }
     webview.current?.injectJavaScript(`window.drawCard(${JSON.stringify(request)}); true;`)
-  }, [account, height, image, screenHeight, screenWidth, share, subtitle, title, url, width])
+  }, [account, height, image, maxBytes, screenHeight, screenWidth, share, subtitle, title, url, width])
 
   // 1 文字ごとに描き直すと、そのたびに二分探索と PNG の生成が走る。
   // 手が止まってからにする。

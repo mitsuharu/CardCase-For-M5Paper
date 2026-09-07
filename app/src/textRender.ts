@@ -39,6 +39,8 @@ export type CardRequest = {
   share: number
   width: number
   height: number
+  /** 送る大きさの目安。これに収まるまで圧縮を強める */
+  maxBytes: number
 }
 
 /** WebView から返ってくるもの */
@@ -984,6 +986,41 @@ window.draw = function (request) {
   }
 };
 
+// data URL の中身のバイト数。base64 は 4 文字で 3 バイトになる。
+function bytesOf(dataUrl) {
+  return Math.floor((dataUrl.length - dataUrl.indexOf(',') - 1) * 3 / 4);
+}
+
+// 送る大きさの目安に収まるまで、PNG から JPEG へと試す。
+//
+// 名刺に写真を選ばれると PNG では収まらない。本体が受け取れる上限
+// （256KB）を超えると送信そのものが弾かれるし、収まっても NFC は
+// 5KB/秒ほどしか出ないので、大きさがそのまま待ち時間になる。
+// 段の刻みは imagePicker.ts の縮め方に合わせてある。
+//
+// テキストの側にこれが要らないのは、文字だけの画像なら PNG のほうが
+// 小さく、しかも劣化しないため。写真が入るのは名刺だけ。
+function encodeCard(limit) {
+  const png = canvas.toDataURL('image/png');
+  if (bytesOf(png) <= limit) {
+    return png;
+  }
+
+  let smallest = png;
+  for (const quality of [0.7, 0.5, 0.35, 0.25, 0.15]) {
+    const jpeg = canvas.toDataURL('image/jpeg', quality);
+    if (bytesOf(jpeg) < bytesOf(smallest)) {
+      smallest = jpeg;
+    }
+    if (bytesOf(jpeg) <= limit) {
+      return jpeg;
+    }
+  }
+
+  // 目安を超えても送れないわけではない。時間がかかることは呼び出し側が伝える。
+  return smallest;
+}
+
 // 名刺を描く。
 //
 // 画像は data URL で渡ってくるので、読み込みを待ってから描く。
@@ -1006,7 +1043,7 @@ window.drawCard = function (request) {
       reply({
         id: request.id,
         // 収まらなかったときの絵は送らせないので、作らない
-        dataUrl: result.drawn ? canvas.toDataURL('image/png') : '',
+        dataUrl: result.drawn ? encodeCard(request.maxBytes) : '',
         size: result.size,
         drawn: result.drawn,
         width: canvas.width,

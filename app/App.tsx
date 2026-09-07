@@ -248,6 +248,7 @@ export default function App() {
             <CardComposer
               screenWidth={SCREEN_WIDTH}
               screenHeight={SCREEN_HEIGHT}
+              maxBytes={MAX_BYTES}
               onResult={receiveCard}
               onError={failText}
             />
