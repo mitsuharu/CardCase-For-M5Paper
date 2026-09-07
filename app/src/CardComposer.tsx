@@ -225,7 +225,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
           style={styles.input}
           value={title}
           onChangeText={setTitle}
-          placeholder="江本 光晴"
+          placeholder="山田 太郎"
           placeholderTextColor="#999"
           inputAccessoryViewID={accessoryFor}
         />
@@ -237,7 +237,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
           style={styles.input}
           value={subtitle}
           onChangeText={setSubtitle}
-          placeholder="Mitsuharu Emoto"
+          placeholder="Taro Yamada"
           placeholderTextColor="#999"
           inputAccessoryViewID={accessoryFor}
         />
@@ -249,7 +249,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
           style={styles.input}
           value={account}
           onChangeText={setAccount}
-          placeholder="@mitsuharu_e"
+          placeholder="@example"
           placeholderTextColor="#999"
           autoCapitalize="none"
           inputAccessoryViewID={accessoryFor}
@@ -262,7 +262,7 @@ export function CardComposer({ screenWidth, screenHeight, onResult, onError }: P
           style={styles.input}
           value={url}
           onChangeText={setUrl}
-          placeholder="https://x.com/mitsuharu_e"
+          placeholder="https://example.com/"
           placeholderTextColor="#999"
           autoCapitalize="none"
           autoCorrect={false}

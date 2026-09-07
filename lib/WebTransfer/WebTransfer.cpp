@@ -314,10 +314,10 @@ button:disabled{background:#9bb4cc}
 <input type="file" id="cardfile" accept="image/*">
 <button type="button" class="copy" id="card-clear" hidden>画像を外す</button>
 <p class="note" id="card-note"></p>
-<div class="line"><label>タイトル<input type="text" id="card-title" placeholder="江本 光晴"></label></div>
-<div class="line"><label>サブタイトル<input type="text" id="card-subtitle" placeholder="Mitsuharu Emoto"></label></div>
-<div class="line"><label>SNS アカウント<input type="text" id="card-account" placeholder="@mitsuharu_e"></label></div>
-<div class="line"><label>QR にする URL<input type="url" id="card-url" inputmode="url" placeholder="https://x.com/mitsuharu_e"></label></div>
+<div class="line"><label>タイトル<input type="text" id="card-title" placeholder="山田 太郎"></label></div>
+<div class="line"><label>サブタイトル<input type="text" id="card-subtitle" placeholder="Taro Yamada"></label></div>
+<div class="line"><label>SNS アカウント<input type="text" id="card-account" placeholder="@example"></label></div>
+<div class="line"><label>QR にする URL<input type="url" id="card-url" inputmode="url" placeholder="https://example.com/"></label></div>
 <div class="size">
 <label>幅<input type="number" id="card-w" min="16" max="2000" step="1" value="%W%"></label>
 <label>高さ<input type="number" id="card-h" min="16" max="2000" step="1" value="%H%"></label>
@@ -1162,7 +1162,7 @@ function fitLines(ctx, texts, maxWidth, maxHeight, wrapping) {
 // 名刺に載せる文字の組み方を決める。
 //
 // 折り返さずに入るならそちらを採る。日本語は語の切れ目が無いので、
-// 折り返しを先に許すと「江本」「光晴」と名前を割ってでも字を大きくしてしまう。
+// 折り返しを先に許すと「山田」「太郎」と名前を割ってでも字を大きくしてしまう。
 // ただし、そのために読めない大きさになるなら折り返しに任せる。
 // テキストの側と同じ考え方で、境目も同じ READABLE を使う。
 //

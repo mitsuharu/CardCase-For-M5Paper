@@ -84,7 +84,7 @@ function fakeContext() {
 /** 名刺に載せる画像。中身は使わないので、大きさだけあればよい。 */
 const IMAGE = { element: 'icon', width: 400, height: 400 }
 
-const URL = 'https://x.com/mitsuharu_e'
+const URL = 'https://example.com/'
 
 test('項目が何も無ければ描かない', () => {
   const { paintCard } = load()
@@ -97,9 +97,9 @@ test('項目が何も無ければ描かない', () => {
 test('タイトルとサブタイトルを並べる', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  const result = paintCard(ctx, 540, 960, { title: '江本 光晴', subtitle: 'Mitsuharu Emoto' }, 1)
+  const result = paintCard(ctx, 540, 960, { title: '山田 太郎', subtitle: 'Taro Yamada' }, 1)
   assert.ok(result.drawn)
-  assert.deepEqual(ctx.drawn.map((line) => line.text), ['江本 光晴', 'Mitsuharu Emoto'])
+  assert.deepEqual(ctx.drawn.map((line) => line.text), ['山田 太郎', 'Taro Yamada'])
 })
 
 test('サブタイトルとアカウントはタイトルより小さい', () => {
@@ -107,9 +107,9 @@ test('サブタイトルとアカウントはタイトルより小さい', () =>
   const { paintCard } = load()
   const ctx = fakeContext()
   paintCard(ctx, 540, 960, {
-    title: '江本 光晴',
-    subtitle: 'Mitsuharu Emoto',
-    account: '@mitsuharu_e',
+    title: '山田 太郎',
+    subtitle: 'Taro Yamada',
+    account: '@example',
   }, 1)
   const [title, subtitle, account] = ctx.drawn
   assert.ok(title.size > subtitle.size, `${title.size} > ${subtitle.size}`)
@@ -121,7 +121,7 @@ test('空の項目は場所を取らず、残りが真ん中に来る', () => {
   // 埋めなかったぶんが空いたままだと、名刺として見たときに間が抜ける。
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 540, 960, { title: '江本 光晴' }, 1)
+  paintCard(ctx, 540, 960, { title: '山田 太郎' }, 1)
   const [line] = ctx.drawn
   assert.ok(Math.abs(line.y - 480) < 2, `${line.y}`)
   assert.equal(line.x, 270)
@@ -132,8 +132,8 @@ test('縦長のときは、画像・文字・QR を縦に積む', () => {
   const ctx = fakeContext()
   const result = paintCard(ctx, 540, 960, {
     image: IMAGE,
-    title: '江本 光晴',
-    subtitle: 'Mitsuharu Emoto',
+    title: '山田 太郎',
+    subtitle: 'Taro Yamada',
     url: URL,
   }, 1)
   assert.ok(result.drawn)
@@ -152,8 +152,8 @@ test('横長で画像があるときは、画像を左に置いて右に積む',
   const ctx = fakeContext()
   const result = paintCard(ctx, 960, 540, {
     image: IMAGE,
-    title: '江本 光晴',
-    subtitle: 'Mitsuharu Emoto',
+    title: '山田 太郎',
+    subtitle: 'Taro Yamada',
     url: URL,
   }, 1)
   assert.ok(result.drawn)
@@ -168,7 +168,7 @@ test('横長で画像があるときは、画像を左に置いて右に積む',
 test('横長でも画像が無ければ 1 列に積む', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 960, 540, { title: '江本 光晴', url: URL }, 1)
+  paintCard(ctx, 960, 540, { title: '山田 太郎', url: URL }, 1)
   assert.equal(ctx.drawn[0].x, 480)
 })
 
@@ -219,31 +219,31 @@ test('決まった URL からは決まった升目ができる', () => {
   // 誤り訂正やマスクの選び方を変えると、ここが合わなくなる。
   const { qrModules } = load()
   const expected = [
-    '#######....##.#.#.#######',
-    '#.....#...#.##.#..#.....#',
-    '#.###.#.####..###.#.###.#',
-    '#.###.#.##.######.#.###.#',
-    '#.###.#.##....#.#.#.###.#',
-    '#.....#.###...###.#.....#',
+    '#######.#..##.###.#######',
+    '#.....#..###....#.#.....#',
+    '#.###.#..#....#.#.#.###.#',
+    '#.###.#.###.#####.#.###.#',
+    '#.###.#.#..#..###.#.###.#',
+    '#.....#.##...#....#.....#',
     '#######.#.#.#.#.#.#######',
-    '........#.##..##.........',
-    '#.#####....#.##...#####..',
-    '...##..####.##..#......#.',
-    '#.###.##..##...###...#.##',
-    '...#.#..#...#..##...#...#',
-    '#.#...#.###.###..####.###',
-    '#.#.....##......#..#.#.#.',
-    '#.....#...###..##.####.##',
-    '#.###..#...#..#.##.##...#',
-    '#.....#.#..####.#####.#..',
-    '........#...#.###...##...',
-    '#######..##..#..#.#.#.###',
-    '#.....#.###....##...##.##',
-    '#.###.#.#.#.#########.#..',
-    '#.###.#.####..#..##.#####',
-    '#.###.#.##....#.#....##.#',
-    '#.....#...##..####.###..#',
-    '#######.####..#..#.######',
+    '........##..#.#..........',
+    '#...#.####.#..##.#####..#',
+    '#..#.#..##.#..##.#..##.#.',
+    '#..#.##.##.#####.###.##..',
+    '#.#..#.#..##..##.#.#..##.',
+    '###.#.#.#....##..###.####',
+    '##......###.#.###...#..#.',
+    '....#.##.#.#######.####..',
+    '..#.#..#..##.#.#...##.##.',
+    '####..#.###.##.########..',
+    '........#....##.#...#....',
+    '#######.#.#.....#.#.#....',
+    '#.....#..#..#.#.#...####.',
+    '#.###.#.####.##.#########',
+    '#.###.#...#.#....###..###',
+    '#.###.#..##########..#.#.',
+    '#.....#....#.#....######.',
+    '#######.###.##.#.##...###',
   ]
   const modules = qrModules(URL)
   assert.ok(modules !== null)
@@ -279,7 +279,7 @@ test('QR の四隅にはファインダが立つ', () => {
 test('割合を下げると文字が小さくなる', () => {
   // 自動が上限で、それより大きくはできない。テキストの側と同じ扱い。
   const { paintCard } = load()
-  const card = { title: '江本 光晴', subtitle: 'Mitsuharu Emoto' }
+  const card = { title: '山田 太郎', subtitle: 'Taro Yamada' }
   const auto = paintCard(fakeContext(), 540, 960, card, 1)
   const half = paintCard(fakeContext(), 540, 960, card, 0.5)
   assert.ok(auto.size > 0)
@@ -289,7 +289,7 @@ test('割合を下げると文字が小さくなる', () => {
 test('割合を下げても 12px より小さくはしない', () => {
   // 電子ペーパーでは、これを切ると画数の多い漢字が潰れて読めない。
   const { paintCard } = load()
-  const card = { title: '江本 光晴' }
+  const card = { title: '山田 太郎' }
   assert.ok(paintCard(fakeContext(), 540, 960, card, 1).size > 12)
   assert.equal(paintCard(fakeContext(), 540, 960, card, 0.05).size, 12)
 })
@@ -298,7 +298,7 @@ test('割合を下げてもレイアウトは中央のまま', () => {
   // 小さくしたぶんは上下に散らさず、詰めて真ん中に置く。
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 540, 960, { title: '江本 光晴', subtitle: 'Mitsuharu Emoto' }, 0.5)
+  paintCard(ctx, 540, 960, { title: '山田 太郎', subtitle: 'Taro Yamada' }, 0.5)
   const middle = (ctx.drawn[0].y + ctx.drawn[ctx.drawn.length - 1].y) / 2
   assert.ok(Math.abs(middle - 480) < 30, `${middle}`)
 })
@@ -306,7 +306,7 @@ test('割合を下げてもレイアウトは中央のまま', () => {
 test('URL が空なら QR を置かない', () => {
   const { paintCard } = load()
   const ctx = fakeContext()
-  paintCard(ctx, 540, 960, { title: '江本 光晴', url: '   ' }, 1)
+  paintCard(ctx, 540, 960, { title: '山田 太郎', url: '   ' }, 1)
   // 名刺の下地を塗るだけで、升目は描かれない
   assert.equal(ctx.rects.length, 1)
 })
